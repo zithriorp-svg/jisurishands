@@ -70,3 +70,35 @@ export async function ensureDefaultPortfolio(): Promise<void> {
     console.error("Error ensuring default portfolio:", error);
   }
 }
+
+// 🚀 UPGRADED: Delete Portfolio Protocol
+export async function deletePortfolioAction(portfolioName: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (portfolioName === DEFAULT_PORTFOLIO) {
+      return { success: false, error: "Cannot delete the Main Portfolio. This is protected." };
+    }
+
+    // 1. Delete all related records first (Cascading manual delete)
+    await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
+    await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
+    await prisma.loan.deleteMany({ where: { portfolio: portfolioName } });
+    await prisma.clientMessage.deleteMany({ where: { client: { portfolio: portfolioName } } });
+    await prisma.client.deleteMany({ where: { portfolio: portfolioName } });
+    
+    await prisma.ledger.deleteMany({ where: { portfolio: portfolioName } });
+    await prisma.expense.deleteMany({ where: { portfolio: portfolioName } });
+    await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } });
+
+    // 2. Delete the portfolio itself
+    await prisma.systemPortfolio.delete({ where: { name: portfolioName } });
+
+    // 3. Force switch back to Default Portfolio to prevent getting stuck in a ghost portfolio
+    await setActivePortfolioCookie(DEFAULT_PORTFOLIO);
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error deleting portfolio:", error);
+    return { success: false, error: error.message || "Failed to delete portfolio. Please check database logs." };
+  }
+}
