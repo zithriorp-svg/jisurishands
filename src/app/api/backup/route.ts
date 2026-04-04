@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const portfolio = searchParams.get('portfolio');
+    const format = searchParams.get('format') || 'csv';
 
     if (!portfolio) {
       return NextResponse.json({ error: "Portfolio name is required" }, { status: 400 });
@@ -15,13 +16,37 @@ export async function GET(request: Request) {
     // Extract all core data for this specific portfolio
     const clients = await prisma.client.findMany({ where: { portfolio } });
     const loans = await prisma.loan.findMany({ where: { portfolio } });
-    const payments = await prisma.payment.findMany({ where: { loan: { portfolio } } });
+    
+    const loanIds = loans.map(l => l.id);
+    const installments = await prisma.loanInstallment.findMany({ where: { loanId: { in: loanIds } } });
+    const payments = await prisma.payment.findMany({ where: { loanId: { in: loanIds } } });
+    
     const ledgers = await prisma.ledger.findMany({ where: { portfolio } });
+    const expenses = await prisma.expense.findMany({ where: { portfolio } });
+    const capitalTx = await prisma.capitalTransaction.findMany({ where: { portfolio } });
+    const messages = await prisma.clientMessage.findMany({ where: { client: { portfolio } } });
 
-    // Format Data into simple CSV strings
+    // === JSON FORMAT (For Machine Restore) ===
+    if (format === 'json') {
+      const exportData = {
+        portfolio,
+        timestamp: new Date().toISOString(),
+        version: "1.0",
+        data: { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages }
+      };
+
+      return new NextResponse(JSON.stringify(exportData, null, 2), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Disposition': `attachment; filename="vault_backup_${portfolio.replace(/\s+/g, '_').toLowerCase()}.json"`,
+        },
+      });
+    }
+
+    // === CSV FORMAT (For Human Excel/Reading) ===
     let csvData = `--- FINTECH VAULT BACKUP: ${portfolio.toUpperCase()} ---\n\n`;
 
-    // 1. CLIENTS
     csvData += "=== CLIENTS ===\n";
     csvData += "ID,First Name,Last Name,Phone,Address,Created At\n";
     clients.forEach(c => {
@@ -29,7 +54,6 @@ export async function GET(request: Request) {
     });
     csvData += "\n";
 
-    // 2. LOANS
     csvData += "=== LOANS ===\n";
     csvData += "Loan ID,Client ID,Principal,Status,Term Duration,Term Type,Start Date,End Date\n";
     loans.forEach(l => {
@@ -37,7 +61,6 @@ export async function GET(request: Request) {
     });
     csvData += "\n";
 
-    // 3. PAYMENTS
     csvData += "=== PAYMENTS ===\n";
     csvData += "Payment ID,Loan ID,Amount,Principal Portion,Interest Portion,Payment Date,Type\n";
     payments.forEach(p => {
@@ -45,14 +68,13 @@ export async function GET(request: Request) {
     });
     csvData += "\n";
 
-    // 4. LEDGER
     csvData += "=== LEDGER TRANSACTIONS ===\n";
     csvData += "Ledger ID,Date,Type,Debit Account,Credit Account,Amount\n";
     ledgers.forEach(l => {
-      csvData += `${l.id},${l.createdAt.toISOString() || l.date.toISOString()},${l.transactionType},${l.debitAccount},${l.creditAccount},${l.amount}\n`;
+      const dateVal = l.createdAt ? l.createdAt.toISOString() : (l.date ? l.date.toISOString() : '');
+      csvData += `${l.id},${dateVal},${l.transactionType},${l.debitAccount},${l.creditAccount},${l.amount}\n`;
     });
 
-    // Send the file down to the browser as a downloadable CSV
     return new NextResponse(csvData, {
       status: 200,
       headers: {
@@ -66,4 +88,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Failed to extract backup data" }, { status: 500 });
   }
 }
-
