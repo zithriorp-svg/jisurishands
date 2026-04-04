@@ -382,7 +382,8 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
                       <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${isMe ? 'text-emerald-400' : isAdmin ? 'text-blue-400' : 'text-amber-400'}`}>
                         {isMe ? 'YOU' : msg.sender} • {formatDateTime(msg.createdAt)}
                       </span>
-                      <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
+                      {/* 🚀 UPGRADED: Added whitespace-pre-wrap to properly format line breaks! */}
+                      <div className={`max-w-[85%] p-3 rounded-2xl text-sm whitespace-pre-wrap break-words ${
                         isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 
                         isAdmin ? 'bg-blue-600/20 border border-blue-500/30 text-blue-100 rounded-tl-none' : 
                         'bg-amber-600/20 border border-amber-500/30 text-amber-100 rounded-tl-none'
@@ -416,4 +417,3 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
     </div>
   );
 }
-
