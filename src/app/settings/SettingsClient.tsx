@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { switchPortfolioAction, initializeNewYearAction, deletePortfolioAction } from "./actions";
 
@@ -15,90 +15,93 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
   const [switchLoading, setSwitchLoading] = useState(false);
   const [initLoading, setInitLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
   const [message, setMessage] = useState("");
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSwitchPortfolio = async () => {
     if (selectedPortfolio === activePortfolio) {
       setMessage("Already viewing this portfolio");
       return;
     }
-
-    setSwitchLoading(true);
-    setMessage("");
-
+    setSwitchLoading(true); setMessage("");
     const result = await switchPortfolioAction(selectedPortfolio);
-    
-    if (result.success) {
-      setMessage(`✅ Switched to "${selectedPortfolio}"`);
-      window.location.reload();
-    } else {
-      setMessage(result.error || "Failed to switch portfolio");
-    }
-
+    if (result.success) { window.location.reload(); } 
+    else { setMessage(result.error || "Failed to switch portfolio"); }
     setSwitchLoading(false);
   };
 
   const handleInitializeNewYear = async () => {
-    if (!newYearName.trim()) {
-      setMessage("Please enter a portfolio name");
-      return;
-    }
-
-    setInitLoading(true);
-    setMessage("");
-
+    if (!newYearName.trim()) { setMessage("Please enter a portfolio name"); return; }
+    setInitLoading(true); setMessage("");
     const result = await initializeNewYearAction(newYearName.trim());
-    
-    if (result.success) {
-      setMessage(`✅ Created and switched to "${newYearName.trim()}"`);
-      window.location.reload();
-    } else {
-      setMessage(result.error || "Failed to initialize new year");
-    }
-
+    if (result.success) { window.location.reload(); } 
+    else { setMessage(result.error || "Failed to initialize new year"); }
     setInitLoading(false);
   };
 
-  // 🚀 UPGRADED: Delete Protocol
   const handleDeletePortfolio = async () => {
-    if (selectedPortfolio === "Main Portfolio") {
-      alert("SECURITY OVERRIDE: You cannot delete the Main Portfolio.");
-      return;
-    }
-
-    const confirm1 = confirm(`WARNING: You are about to permanently delete the portfolio "${selectedPortfolio}".\n\nThis will erase ALL clients, loans, payments, and ledgers inside it.\n\nProceed?`);
+    if (selectedPortfolio === "Main Portfolio") { alert("SECURITY OVERRIDE: You cannot delete the Main Portfolio."); return; }
+    const confirm1 = confirm(`WARNING: You are about to permanently delete "${selectedPortfolio}".\n\nThis will erase ALL data inside it. Proceed?`);
     if (!confirm1) return;
-
     const confirm2 = confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Are you absolutely sure?`);
     if (!confirm2) return;
 
-    setDeleteLoading(true);
-    setMessage("Initiating destruction sequence...");
-
+    setDeleteLoading(true); setMessage("Initiating destruction sequence...");
     const result = await deletePortfolioAction(selectedPortfolio);
-    
-    if (result.success) {
-      setMessage(`💥 Portfolio "${selectedPortfolio}" destroyed.`);
-      window.location.reload(); // Will reload into Main Portfolio
-    } else {
-      setMessage(result.error || "Destruction failed.");
-    }
-
+    if (result.success) { window.location.reload(); } 
+    else { setMessage(result.error || "Destruction failed."); }
     setDeleteLoading(false);
   };
 
-  // 🚀 UPGRADED: Download CSV Protocol
-  const handleDownloadBackup = () => {
+  // 🚀 UPGRADED: Supports both CSV and JSON
+  const handleDownloadBackup = (format: 'csv' | 'json') => {
     if (!selectedPortfolio) return;
-    
-    // Direct the user to the backup API endpoint, passing the portfolio name
-    window.open(`/api/backup?portfolio=${encodeURIComponent(selectedPortfolio)}`, '_blank');
-    setMessage(`📥 Downloading raw data for "${selectedPortfolio}"...`);
+    window.open(`/api/backup?portfolio=${encodeURIComponent(selectedPortfolio)}&format=${format}`, '_blank');
+    setMessage(`📥 Downloading ${format.toUpperCase()} Backup for "${selectedPortfolio}"...`);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const confirm1 = confirm(`WARNING: You are about to OVERWRITE "${selectedPortfolio}" with this backup file.\n\nAll current data in this portfolio will be WIPED OUT and replaced with the uploaded data.\n\nProceed?`);
+    if (!confirm1) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setRestoreLoading(true);
+    setMessage("Uploading and rebuilding data matrix...");
+
+    try {
+      const text = await file.text();
+      const backupData = JSON.parse(text);
+
+      const res = await fetch('/api/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetPortfolio: selectedPortfolio, backupData })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setMessage(`✅ Backup successfully restored to "${selectedPortfolio}"! Rebooting...`);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setMessage(`Matrix Error: ${data.error}`);
+      }
+    } catch (err) {
+      setMessage("Error reading file. Ensure it is a valid .json Vault Backup.");
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setRestoreLoading(false);
   };
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6 pb-20 font-sans">
-      {/* Header */}
       <div className="flex justify-between items-center pt-4">
         <div>
           <h1 className="text-2xl font-bold text-white">System Settings</h1>
@@ -107,7 +110,6 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
         <Link href="/" className="text-sm text-blue-400 hover:underline">← Dashboard</Link>
       </div>
 
-      {/* Current Portfolio Badge */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl flex items-center justify-between">
         <div>
           <p className="text-xs text-zinc-500 uppercase tracking-wider">Currently Viewing</p>
@@ -118,94 +120,67 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
         </div>
       </div>
 
-      {/* Card 1: Switch Portfolio */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
         <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Active Fiscal Year</h2>
-        
         <div className="space-y-4">
           <div>
             <label className="block text-xs text-zinc-500 uppercase tracking-widest mb-2">Select Portfolio</label>
-            <select
-              value={selectedPortfolio}
-              onChange={(e) => setSelectedPortfolio(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 text-white p-4 rounded-xl focus:outline-none focus:border-blue-500"
-            >
+            <select value={selectedPortfolio} onChange={(e) => setSelectedPortfolio(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 text-white p-4 rounded-xl focus:outline-none focus:border-blue-500">
               {portfolioList.map((portfolio) => (
-                <option key={portfolio} value={portfolio}>
-                  {portfolio} {portfolio === activePortfolio ? "(Current)" : ""}
-                </option>
+                <option key={portfolio} value={portfolio}>{portfolio} {portfolio === activePortfolio ? "(Current)" : ""}</option>
               ))}
             </select>
           </div>
-
-          <button
-            onClick={handleSwitchPortfolio}
-            disabled={switchLoading || selectedPortfolio === activePortfolio}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button onClick={handleSwitchPortfolio} disabled={switchLoading || selectedPortfolio === activePortfolio} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold uppercase tracking-wider transition-colors disabled:opacity-50">
             {switchLoading ? "Switching..." : "Switch Year"}
           </button>
         </div>
       </div>
 
-      {/* 🚀 UPGRADED: New Portfolio Data Management Card */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
         <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-4">Portfolio Data Management</h2>
         <div className="space-y-3">
-          <p className="text-xs text-zinc-500 leading-relaxed mb-4">
-            Manage the data for the portfolio selected above (<span className="text-zinc-300 font-bold">{selectedPortfolio}</span>).
-          </p>
+          <p className="text-xs text-zinc-500 leading-relaxed mb-4">Manage the data for the portfolio selected above (<span className="text-zinc-300 font-bold">{selectedPortfolio}</span>).</p>
           
-          <button
-            onClick={handleDownloadBackup}
-            className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white py-3 rounded-xl font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
-          >
-            📥 Download Backup (CSV)
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button onClick={() => handleDownloadBackup('csv')} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors">
+              📄 Download CSV
+            </button>
+            <button onClick={() => handleDownloadBackup('json')} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors">
+              📦 Download JSON
+            </button>
+          </div>
+          
+          <button onClick={() => fileInputRef.current?.click()} disabled={restoreLoading} className="w-full bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/50 text-blue-400 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50 mt-2">
+            {restoreLoading ? "⏳ Restoring..." : "📤 Upload JSON to Restore"}
           </button>
+          
+          {/* Hidden File Input */}
+          <input type="file" accept=".json" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
 
-          <button
-            onClick={handleDeletePortfolio}
-            disabled={deleteLoading || selectedPortfolio === "Main Portfolio"}
-            className="w-full bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-400 py-3 rounded-xl font-bold uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {deleteLoading ? "Destroying..." : "🗑️ Delete Portfolio"}
-          </button>
+          <div className="pt-4 border-t border-zinc-800 mt-4">
+            <button onClick={handleDeletePortfolio} disabled={deleteLoading || selectedPortfolio === "Main Portfolio"} className="w-full bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-400 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50 mt-2">
+              {deleteLoading ? "Destroying..." : "🗑️ Delete Portfolio"}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Card 2: Initialize New Year */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
         <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Start Fresh Fiscal Year</h2>
-        
         <div className="space-y-4">
           <div>
             <label className="block text-xs text-zinc-500 uppercase tracking-widest mb-2">New Fiscal Year Name</label>
-            <input
-              type="text"
-              value={newYearName}
-              onChange={(e) => setNewYearName(e.target.value)}
-              placeholder="e.g., 2027 New Day, Branch Expansion..."
-              className="w-full bg-zinc-800 border border-zinc-700 text-white p-4 rounded-xl focus:outline-none focus:border-blue-500"
-            />
+            <input type="text" value={newYearName} onChange={(e) => setNewYearName(e.target.value)} placeholder="e.g., 2027 New Day..." className="w-full bg-zinc-800 border border-zinc-700 text-white p-4 rounded-xl focus:outline-none focus:border-blue-500" />
           </div>
-
-          <p className="text-xs text-zinc-500">
-            This will create a new empty portfolio. All new records will be saved to this portfolio.
-          </p>
-
-          <button
-            onClick={handleInitializeNewYear}
-            disabled={initLoading || !newYearName.trim()}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button onClick={handleInitializeNewYear} disabled={initLoading || !newYearName.trim()} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold uppercase tracking-wider transition-colors disabled:opacity-50">
             {initLoading ? "Initializing..." : "Initialize New Year"}
           </button>
         </div>
       </div>
 
-      {/* Message */}
       {message && (
-        <div className={`p-4 rounded-xl text-sm font-bold ${message.includes("✅") ? "bg-emerald-500/20 text-emerald-400" : message.includes("💥") ? "bg-rose-500/20 text-rose-400" : "bg-zinc-800 text-white"}`}>
+        <div className={`p-4 rounded-xl text-sm font-bold ${message.includes("✅") ? "bg-emerald-500/20 text-emerald-400" : message.includes("💥") || message.includes("Error") ? "bg-rose-500/20 text-rose-400" : "bg-zinc-800 text-white"}`}>
           {message}
         </div>
       )}
