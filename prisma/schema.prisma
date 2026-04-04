@@ -1,0 +1,349 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Dedicated model for tracking portfolios - ensures empty portfolios persist
+model SystemPortfolio {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Agent {
+  id          Int              @id @default(autoincrement())
+  name        String
+  phone       String
+  portfolio   String           @default("Main Portfolio")
+  // Authentication fields
+  username    String?          @unique
+  pin         String?          // 6-digit PIN for agent portal login
+  isLocked    Boolean          @default(false) // Lockout toggle for admin control
+  loans       Loan[]
+  commissions AgentCommission[]
+  createdAt   DateTime         @default(now())
+
+  @@index([portfolio])
+}
+
+model AgentCommission {
+  id        Int      @id @default(autoincrement())
+  agentId   Int
+  agent     Agent    @relation(fields: [agentId], references: [id])
+  loanId    Int
+  amount    Decimal  // 40% of the interest collected
+  isPaidOut Boolean  @default(false) // True when the House pays the agent
+  createdAt DateTime @default(now())
+
+  @@index([agentId])
+  @@index([loanId])
+  @@index([isPaidOut])
+}
+
+model Client {
+  id               Int         @id @default(autoincrement())
+  firstName        String
+  lastName         String
+  phone            String?
+  address          String?
+  digitalSignature String?     // Base64 signature image from application
+  portfolio        String      @default("Main Portfolio")
+  createdAt        DateTime    @default(now())
+  applicationId    Int?        @unique // Link to original application
+  application      Application? @relation(fields: [applicationId], references: [id])
+  loans            Loan[]
+  messages         Message[]   // 🚀 NEW: Link to 3-way chat messages
+
+  @@index([portfolio])
+}
+
+model Loan {
+  id                   Int              @id @default(autoincrement())
+  clientId             Int
+  principal            Decimal
+  interestRate         Decimal
+  termDuration         Int              @default(1) // Number of periods
+  termType             String           @default("Months") // "Days", "Weeks", "Months"
+  totalInterest        Decimal          @default(0)
+  totalRepayment       Decimal          @default(0)
+  startDate            DateTime
+  endDate              DateTime
+  portfolio            String           @default("Main Portfolio")
+  status               String           @default("ACTIVE") // "ACTIVE", "COMPLETED", "DEFAULTED"
+  agentId              Int?             // Optional: Field Agent / Co-Maker assigned to this loan
+  // REBATE TRAP: Good Payer Discount tracking
+  goodPayerDiscountRevoked Boolean      @default(false) // True if 4% discount has been revoked
+  // Collateral (Palit-Sigurado) fields
+  collateralName       String?          // Name of collateral item
+  collateralDescription String?         // Detailed description
+  collateralDefects    String?          // Known defects/conditions
+  createdAt            DateTime         @default(now())
+  ledger               Ledger[]
+  client               Client           @relation(fields: [clientId], references: [id])
+  agent                Agent?           @relation(fields: [agentId], references: [id])
+  payments             Payment[]
+  installments         LoanInstallment[]
+
+  @@index([portfolio])
+  @@index([status])
+  @@index([agentId])
+}
+
+model LoanInstallment {
+  id             Int       @id @default(autoincrement())
+  loanId         Int
+  loan           Loan      @relation(fields: [loanId], references: [id])
+  period         Int       // e.g., 1, 2, 3
+  dueDate        DateTime  // Exact due date for this installment
+  expectedAmount Decimal   // Expected payment amount
+  principal      Decimal   // Principal portion
+  interest       Decimal   // Interest portion
+  penaltyFee     Decimal   @default(0) // RCI: Late penalty fees
+  status         String    @default("PENDING") // PENDING, PAID, LATE, MISSED, PARTIAL
+  paymentDate    DateTime? // When it was actually paid
+  amountPaid     Decimal   @default(0) // Actual amount paid
+  principalPaid  Decimal   @default(0) // Principal amount paid
+  interestPaid   Decimal   @default(0) // Interest amount paid
+  paymentId      Int?      // Link to actual payment record
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  collectionNotes CollectionNote[]
+
+  @@index([loanId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// RCI: Collection CRM Notes
+model CollectionNote {
+  id            Int             @id @default(autoincrement())
+  installmentId Int
+  installment   LoanInstallment @relation(fields: [installmentId], references: [id])
+  agentId       Int?            // Optional, whoever made the call
+  note          String          // e.g., "Promised to pay tomorrow"
+  promisedDate  DateTime?
+  createdAt     DateTime        @default(now())
+
+  @@index([installmentId])
+  @@index([agentId])
+}
+
+model Payment {
+  id               Int      @id @default(autoincrement())
+  loanId           Int
+  periodNumber     Int      @default(1) // Which payment in the schedule (1, 2, 3...)
+  paymentDate      DateTime @default(now()) // Actual payment date
+  amount           Decimal  // Total payment amount
+  principalPortion Decimal  @default(0) // Principal part
+  interestPortion  Decimal  @default(0) // Interest part
+  remainingBalance Decimal  @default(0) // Balance after this payment
+  status           String   @default("Pending") // "Pending", "Paid", "Overdue"
+  paymentType      String   @default("FULL") // "FULL", "INTEREST", "PRINCIPAL"
+  installmentId    Int?     // Link to specific installment
+  ledger           Ledger[]
+  loan             Loan     @relation(fields: [loanId], references: [id])
+}
+
+model Ledger {
+  id              Int      @id @default(autoincrement())
+  debitAccount    String
+  creditAccount   String
+  amount          Decimal
+  transactionType String
+  portfolio       String   @default("Main Portfolio")
+  loanId          Int?
+  paymentId       Int?
+  createdAt       DateTime @default(now())
+  payment         Payment? @relation(fields: [paymentId], references: [id])
+  loan            Loan?    @relation(fields: [loanId], references: [id])
+
+  @@index([portfolio])
+}
+
+model Application {
+  id                   Int       @id @default(autoincrement())
+  createdAt            DateTime  @default(now())
+  status               String    @default("Pending")
+  firstName            String
+  lastName             String
+  phone                String
+  address              String?
+  birthDate            DateTime?
+  age                  Int?
+  employment           String
+  income               Decimal
+  familySize           Int?
+  workingMembers       Int?
+  students             Int?
+  infants              Int?
+  housingStatus        String?
+  rentAmount           Decimal?
+  monthlyBills         Decimal?
+  existingLoansDetails String?
+  monthlyDebtPayment   Decimal?
+  referenceName        String?
+  referencePhone       String?
+  fbProfileUrl         String?
+  messengerId          String?
+  locationLat          Float?
+  locationLng          Float?
+  locationUrl          String?
+  selfieUrl            String?
+  idPhotoUrl           String?
+  payslipPhotoUrl      String?
+  electricBillPhotoUrl String?
+  waterBillPhotoUrl    String?
+  collateralUrl        String?
+  // Collateral (Palit-Sigurado) text fields
+  collateralName       String?   // Name of collateral item
+  collateralDescription String?  // Detailed description
+  collateralDefects    String?   // Known defects/conditions
+  // AI Appraisal Fields
+  collateralValue      Float?    // Estimated value of collateral (for AI appraisal)
+  collateralAge        String?   // Age of item (e.g., "1 Year", "6 Months")
+  collateralCondition  String?   // Condition: "Excellent", "Good", "Fair", "Poor"
+  digitalSignature     String?   // Base64 signature image
+  // Loan Configuration Fields
+  principal            Decimal?  @default(0)  // Requested loan amount
+  termType             String?   @default("Monthly")  // "Daily", "Weekly", "Monthly"
+  termDuration         Int?      @default(1)  // Number of periods
+  interestRate         Decimal?  @default(6)  // Flat rate percentage (locked at 6%)
+  totalInterest        Decimal?  @default(0)  // Computed interest
+  totalRepayment       Decimal?  @default(0)  // Principal + Interest
+  perPeriodAmount      Decimal?  @default(0)  // Amount per period
+  agentId              Int?      // Assigned agent/co-maker
+  // AI Analysis
+  credibilityScore     Int       @default(0)
+  aiRiskSummary        String    @default("")
+  
+  // 🚀 CRITICAL: Portfolio Tracking
+  portfolio            String    @default("Main Portfolio")
+  targetPortfolioId    Int?      // The explicit ID of the portfolio chosen during application
+  
+  client               Client?
+
+  @@index([portfolio])
+  @@index([targetPortfolioId])
+  @@index([agentId])
+}
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  amount      Decimal
+  category    String
+  description String?
+  portfolio   String   @default("Main Portfolio")
+  date        DateTime @default(now())
+
+  @@index([portfolio])
+}
+
+model CapitalTransaction {
+  id          Int      @id @default(autoincrement())
+  amount      Decimal
+  type        String   // "DEPOSIT" or "WITHDRAWAL"
+  description String?
+  portfolio   String   @default("Main Portfolio")
+  date        DateTime @default(now())
+
+  @@index([portfolio])
+}
+
+// RBAC User model for authentication
+model User {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique
+  passwordHash  String    // SHA256 hash of password
+  role          String    @default("AGENT") // "ADMIN" | "AGENT"
+  name          String?
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime?
+}
+
+// IMMUTABLE AUDIT LEDGER - Master transaction log for reconciliation
+// Every capital movement MUST be logged here in the same transaction
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  type          String   // 'DISBURSEMENT', 'REPAYMENT', 'EXPENSE', 'PENALTY', 'CAPITAL_DEPOSIT', 'CAPITAL_WITHDRAWAL', 'FAST_TRACK'
+  amount        Decimal  // Always positive, direction determined by type
+  referenceId   Int?     // ID of the related Loan, Payment, Expense, or CapitalTransaction
+  referenceType String?  // 'LOAN', 'PAYMENT', 'EXPENSE', 'CAPITAL', 'INSTALLMENT'
+  agentId       Int?     // Who triggered the action (if applicable)
+  description   String   // Human-readable description
+  portfolio     String   @default("Main Portfolio")
+  createdAt     DateTime @default(now())
+
+  @@index([portfolio])
+  @@index([type])
+  @@index([createdAt(sort: Desc)])
+}
+
+// ==========================================
+// AGENT & CO-MAKER BINDING APPLICATIONS
+// ==========================================
+model AgentApplication {
+  id                      Int       @id @default(autoincrement())
+  
+  // System Tracking
+  portfolio               String    @default("Main Portfolio")
+  status                  String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  
+  // 1. Personal Matrix
+  firstName               String
+  lastName                String
+  phone                   String
+  address                 String?
+  birthDate               DateTime?
+
+  // 2. Territory & Operational Capacity
+  territory               String?
+  networkSize             Int?
+  employment              String?
+
+  // 3. Forensic Identity Data (Base64)
+  selfieUrl               String?
+  idPhotoUrl              String?
+  clearanceUrl            String?
+
+  // 4. Pledged Collateral Declaration
+  collateralType          String?
+  collateralValue         Float?
+  collateralCondition     String?
+  
+  // 5. 6-Point Collateral Inspection (Base64)
+  collateralPhotoFront    String?
+  collateralPhotoRear     String?
+  collateralPhotoLeft     String?
+  collateralPhotoRight    String?
+  collateralPhotoSerial   String?
+  collateralPhotoDocument String?
+
+  // Legal
+  digitalSignature        String?
+  
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([portfolio])
+  @@index([status])
+}
+
+// ==========================================
+// 3-WAY COMMUNICATION HUB
+// ==========================================
+model Message {
+  id        Int      @id @default(autoincrement())
+  clientId  Int      // The client this chat belongs to
+  sender    String   // Identifies who sent it: "CLIENT", "AGENT", or "ADMIN"
+  text      String   // The actual message
+  createdAt DateTime @default(now())
+  
+  client    Client   @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([createdAt])
+}

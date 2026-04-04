@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/penalties",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/daily-comm-sync",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

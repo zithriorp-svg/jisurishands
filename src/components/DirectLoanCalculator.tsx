@@ -1,0 +1,435 @@
+"use client";
+
+import { useState, useEffect } from "react";
+
+interface AmortizationRow {
+  period: number;
+  paymentDate: Date;
+  amount: number;
+  principalPortion: number;
+  interestPortion: number;
+  remainingBalance: number;
+}
+
+interface Agent {
+  id: number;
+  name: string;
+  phone: string;
+}
+
+interface DirectLoanCalculatorProps {
+  clientId: number;
+  clientName: string;
+  onDisburseComplete?: () => void;
+}
+
+export default function DirectLoanCalculator({
+  clientId,
+  clientName,
+  onDisburseComplete
+}: DirectLoanCalculatorProps) {
+  const [principal, setPrincipal] = useState<number>(5000);
+  const [termDuration, setTermDuration] = useState<number>(3);
+  const [termType, setTermType] = useState<"Days" | "Weeks" | "Months">("Months");
+  const [schedule, setSchedule] = useState<AmortizationRow[]>([]);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [calculated, setCalculated] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  
+  // Agent selection state
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+  const [loadingAgents, setLoadingAgents] = useState(true);
+
+  // G1C: Vault Cash state for liquidity check
+  const [vaultCash, setVaultCash] = useState<number | null>(null);
+  const [loadingVaultCash, setLoadingVaultCash] = useState(true);
+
+  // REBATE TRAP PRICING MODEL - Fixed rates
+  const baseInterestRate = 0.10; // 10% official rate
+  const discountRate = 0.04;     // 4% Good Payer Discount
+  const effectiveRate = 0.06;    // 6% effective rate (if paid on time)
+
+  // Fetch agents on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/agents', { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (data.agents) {
+          setAgents(data.agents);
+        }
+      })
+      .catch(e => {
+        if (e.name !== 'AbortError') {
+          console.error(e);
+        }
+      })
+      .finally(() => setLoadingAgents(false));
+
+    return () => controller.abort();
+  }, []);
+
+  // G1C: Fetch vault cash on mount
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/vault-cash', { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (data.vaultCash !== undefined) {
+          setVaultCash(data.vaultCash);
+        }
+      })
+      .catch(e => {
+        if (e.name !== 'AbortError') {
+          console.error(e);
+        }
+      })
+      .finally(() => setLoadingVaultCash(false));
+
+    return () => controller.abort();
+  }, []);
+
+  // REBATE TRAP: Calculate totals using fixed pricing model
+  const baseInterest = principal * baseInterestRate;    // 10% official
+  const discountAmount = principal * discountRate;       // 4% discount
+  const totalInterest = principal * effectiveRate;       // 6% effective (net)
+  const totalRepayment = principal + totalInterest;
+  const paymentPerPeriod = termDuration > 0 ? totalRepayment / termDuration : 0;
+
+  // G1C: Liquidity safety check - Principal vs Vault Cash
+  const insufficientLiquidity = vaultCash !== null && principal > vaultCash;
+  const liquidityDeficit = insufficientLiquidity ? principal - (vaultCash || 0) : 0;
+
+  // Calculate amortization schedule
+  const calculateSchedule = () => {
+    const newSchedule: AmortizationRow[] = [];
+    const startDate = new Date();
+    const principalPerPeriod = principal / termDuration;
+    const interestPerPeriod = totalInterest / termDuration;
+    
+    for (let i = 1; i <= termDuration; i++) {
+      const dueDate = new Date(startDate);
+      
+      switch (termType) {
+        case "Days":
+          dueDate.setDate(dueDate.getDate() + i);
+          break;
+        case "Weeks":
+          dueDate.setDate(dueDate.getDate() + (i * 7));
+          break;
+        case "Months":
+          dueDate.setMonth(dueDate.getMonth() + i);
+          break;
+      }
+      
+      const remainingBalance = totalRepayment - (paymentPerPeriod * i);
+      
+      newSchedule.push({
+        period: i,
+        paymentDate: dueDate,
+        amount: paymentPerPeriod,
+        principalPortion: principalPerPeriod,
+        interestPortion: interestPerPeriod,
+        remainingBalance: Math.max(0, remainingBalance)
+      });
+    }
+    
+    setSchedule(newSchedule);
+    setShowSchedule(true);
+    setCalculated(true);
+    setError(null);
+    setSuccess(null);
+  };
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return `₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Format date
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Handle disburse
+  const handleDisburse = async () => {
+    if (!calculated || schedule.length === 0) {
+      setError("Please calculate the schedule first.");
+      return;
+    }
+
+    setIsProcessing(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await fetch('/api/direct-disburse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          principal,
+          interestRate: 6, // Effective rate (Good Payer track)
+          baseInterestRate: 10, // Official rate for contract
+          discountRate: 4, // Good Payer discount
+          termDuration,
+          termType,
+          totalInterest,
+          totalRepayment,
+          schedule: schedule.map(row => ({
+            periodNumber: row.period,
+            paymentDate: row.paymentDate,
+            amount: row.amount,
+            principalPortion: row.principalPortion,
+            interestPortion: row.interestPortion,
+            remainingBalance: row.remainingBalance
+          })),
+          agentId: selectedAgentId
+        })
+      });
+
+      const result = await res.json();
+
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setSuccess(result.message || "Loan disbursed successfully!");
+        setCalculated(false);
+        setShowSchedule(false);
+        setSchedule([]
+);
+        // Reset form
+        setPrincipal(5000);
+        setTermDuration(3);
+        setSelectedAgentId(null);
+        // Notify parent
+        if (onDisburseComplete) {
+          onDisburseComplete();
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to disburse loan");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const inputStyle = "w-full bg-zinc-800 border border-zinc-700 text-white font-bold p-3 rounded-xl outline-none focus:border-emerald-500 transition-colors";
+  const labelStyle = "text-xs text-zinc-500 font-bold uppercase tracking-widest";
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-5">
+      {/* Header */}
+      <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
+        <h2 className="text-emerald-400 font-bold uppercase tracking-widest text-sm">💰 Issue New Loan (Repeat Client)</h2>
+        <span className="text-xs text-zinc-500">Client: {clientName}</span>
+      </div>
+
+      {/* Error/Success Messages */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm font-medium">
+          ⚠️ {error}
+        </div>
+      )}
+      {success && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl text-sm font-medium">
+          ✓ {success}
+        </div>
+      )}
+
+      {/* Agent Selection */}
+      <div>
+        <label className={labelStyle}>Assigned Agent / Co-Maker (Optional)</label>
+        <select
+          value={selectedAgentId || ""}
+          onChange={e => setSelectedAgentId(e.target.value ? Number(e.target.value) : null)}
+          className={`${inputStyle} mt-2`}
+          disabled={loadingAgents}
+        >
+          <option value="">No Agent Assigned</option>
+          {agents.map(agent => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name} {agent.phone ? `(${agent.phone})` : ''}
+            </option>
+          ))}
+        </select>
+        {selectedAgentId && (
+          <p className="text-xs text-emerald-400 mt-1">
+            ✓ Agent will be assigned as Co-Maker for this loan
+          </p>
+        )}
+      </div>
+
+      {/* Calculator Inputs */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className={labelStyle}>Principal Amount (₱)</label>
+          <input
+            type="number"
+            value={principal}
+            onChange={e => { setPrincipal(Number(e.target.value) || 0); setCalculated(false); setShowSchedule(false); }}
+            className={`${inputStyle} mt-2 text-emerald-400 text-xl`}
+            min="100"
+          />
+        </div>
+        
+        {/* REBATE TRAP: Fixed Rate Display */}
+        <div className="col-span-2 bg-zinc-800 p-4 rounded-xl border border-zinc-700">
+          <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-3">Interest Rate Structure</p>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-xs text-zinc-500">Official Rate</p>
+              <p className="text-lg font-bold text-white">10%</p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500">Discount</p>
+              <p className="text-lg font-bold text-emerald-400">-4%</p>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500">Effective</p>
+              <p className="text-lg font-bold text-blue-400">6%</p>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="bg-zinc-900 p-2 rounded flex justify-between">
+              <span className="text-zinc-500">Base Interest:</span>
+              <span className="line-through text-red-400">₱{baseInterest.toFixed(2)}</span>
+            </div>
+            <div className="bg-zinc-900 p-2 rounded flex justify-between">
+              <span className="text-zinc-500">Discount:</span>
+              <span className="text-emerald-400">-₱{discountAmount.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div>
+          <label className={labelStyle}>Duration</label>
+          <input
+            type="number"
+            value={termDuration}
+            onChange={e => { setTermDuration(Number(e.target.value) || 1); setCalculated(false); setShowSchedule(false); }}
+            className={`${inputStyle} mt-2`}
+            min="1"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className={labelStyle}>Term Type</label>
+          <select
+            value={termType}
+            onChange={e => { setTermType(e.target.value as "Days" | "Weeks" | "Months"); setCalculated(false); setShowSchedule(false); }}
+            className={`${inputStyle} mt-2`}
+          >
+            <option value="Days">Daily Payments</option>
+            <option value="Weeks">Weekly Payments</option>
+            <option value="Months">Monthly Payments</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Quick Summary */}
+      <div className="grid grid-cols-3 gap-3 bg-zinc-800 p-4 rounded-xl">
+        <div className="text-center">
+          <p className="text-xs text-zinc-500 uppercase">Net Interest</p>
+          <p className="text-lg font-bold text-yellow-400">{formatCurrency(totalInterest)}</p>
+          <p className="text-xs text-emerald-400">w/ 4% discount</p>
+        </div>
+        <div className="text-center border-x border-zinc-700">
+          <p className="text-xs text-zinc-500 uppercase">Total</p>
+          <p className="text-lg font-bold text-emerald-400">{formatCurrency(totalRepayment)}</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xs text-zinc-500 uppercase">Per Period</p>
+          <p className="text-lg font-bold text-white">{formatCurrency(paymentPerPeriod)}</p>
+        </div>
+      </div>
+
+      {/* Calculate Button */}
+      <button
+        type="button"
+        onClick={calculateSchedule}
+        className="w-full bg-zinc-800 border-2 border-zinc-700 text-white py-3 font-bold text-sm uppercase tracking-widest rounded-xl hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+      >
+        📊 Calculate Schedule
+      </button>
+
+      {/* Amortization Schedule Preview - Flexbox/Grid, NO TABLES */}
+      {showSchedule && schedule.length > 0 && (
+        <div className="border border-zinc-700 rounded-xl overflow-hidden">
+          {/* Header Row */}
+          <div className="bg-zinc-800 p-3 flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider">
+            <span className="w-14">Period</span>
+            <span className="w-24">Due Date</span>
+            <span className="flex-1 text-right">Payment</span>
+            <span className="flex-1 text-right">Balance</span>
+          </div>
+          {/* Schedule Rows */}
+          <div className="max-h-48 overflow-y-auto">
+            {schedule.map((row) => (
+              <div 
+                key={row.period} 
+                className="p-3 border-t border-zinc-800 flex justify-between text-sm bg-zinc-900 hover:bg-zinc-800 transition-colors"
+              >
+                <span className="w-14 text-zinc-400 font-medium">
+                  {row.period} {termType === "Days" ? "D" : termType === "Weeks" ? "W" : "M"}
+                </span>
+                <span className="w-24 text-zinc-300 text-xs">{formatDate(row.paymentDate)}</span>
+                <span className="flex-1 text-right text-emerald-400 font-bold">{formatCurrency(row.amount)}</span>
+                <span className="flex-1 text-right text-white font-medium">{formatCurrency(row.remainingBalance)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* G1C: Insufficient Liquidity Warning */}
+      {insufficientLiquidity && (
+        <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="text-red-400 font-bold uppercase tracking-wider text-sm">
+                INSUFFICIENT VAULT LIQUIDITY
+              </p>
+              <div className="mt-2 space-y-1 text-sm">
+                <p className="text-zinc-300">
+                  Required: <span className="text-red-400 font-bold">{formatCurrency(principal)}</span>
+                </p>
+                <p className="text-zinc-300">
+                  Available: <span className="text-emerald-400 font-bold">{formatCurrency(vaultCash || 0)}</span>
+                </p>
+                <p className="text-zinc-300">
+                  Deficit: <span className="text-red-400 font-bold">{formatCurrency(liquidityDeficit)}</span>
+                </p>
+              </div>
+              <p className="text-zinc-500 text-xs mt-2">
+                Deposit additional capital to Treasury to enable disbursement.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disburse Button */}
+      <button
+        type="button"
+        onClick={handleDisburse}
+        disabled={!calculated || isProcessing || insufficientLiquidity}
+        className="w-full bg-emerald-500 text-zinc-900 font-black py-4 rounded-xl hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors uppercase tracking-widest text-sm shadow-lg"
+      >
+        {isProcessing ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-4 h-4 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin"></span>
+            Processing...
+          </span>
+        ) : insufficientLiquidity ? (
+          "⛔ Insufficient Vault Funds"
+        ) : (
+          "✓ Disburse Loan"
+        )}
+      </button>
+    </div>
+  );
+}
