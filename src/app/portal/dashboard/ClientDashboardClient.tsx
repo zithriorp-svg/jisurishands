@@ -2,9 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { sendPortalChatMessage } from "./actions"; // Import our new chat engine
+import { sendPortalChatMessage } from "./actions";
 
-// ... Interfaces
 interface MessageData {
   id: number;
   sender: string;
@@ -120,7 +119,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
   const [loggingOut, setLoggingOut] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'history' | 'chat'>('overview');
   
-  // Chat State
   const [chatInput, setChatInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -151,7 +149,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
 
   return (
     <div className="min-h-screen bg-zinc-900 pb-20 font-sans">
-      {/* Header */}
       <div className={`p-6 transition-colors ${isOverdue ? 'bg-gradient-to-r from-red-900 to-rose-900' : 'bg-gradient-to-r from-blue-900 to-purple-900'}`}>
         <div className="max-w-4xl mx-auto flex justify-between items-start">
           <div>
@@ -167,14 +164,13 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
 
       <div className="max-w-4xl mx-auto p-4 space-y-4 -mt-4 relative z-10">
         
-        {/* 🚨 AGGRESSIVE COMPLIANCE WARNING */}
         {isOverdue && (
           <div className="bg-rose-500/20 border border-rose-500 rounded-2xl p-6 shadow-[0_0_30px_rgba(244,63,94,0.3)] animate-pulse">
             <h2 className="text-lg font-black text-rose-400 uppercase tracking-widest mb-2 flex items-center gap-2">
               <span>⚠️</span> CONTRACT COMPLIANCE WARNING
             </h2>
             <p className="text-white text-sm mb-3">
-              You have <strong className="text-rose-400 font-black">{data.paymentStats.overdue} OVERDUE</strong> payment(s). A total of <strong className="text-rose-400 font-mono font-black">{formatCurrency(data.totalPenalties)}</strong> in penalty fees has been applied to your account.
+              You have <strong className="text-rose-400 font-black">{data.paymentStats.overdue} OVERDUE</strong> payment(s). A total of <strong className="text-rose-400 font-black">{formatCurrency(data.totalPenalties)}</strong> in penalty fees has been applied to your account.
             </p>
             <div className="bg-black/40 p-4 rounded border border-rose-500/30 text-xs text-rose-200/80 leading-relaxed italic">
               "Sa kaso ng hindi pagbabayad, ang NANGUTANG ay sumasang-ayon na maaaring isama ang kanyang pangalan sa lista ng delinquent borrowers, at ang Pledged Collateral ay maaaring hatakin (seized) ayon sa pinirmahang Master Contract."
@@ -182,7 +178,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
           </div>
         )}
 
-        {/* Account Health Card */}
         <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-6 shadow-xl">
           <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-4">Account Health</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -218,7 +213,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
           </div>
         </div>
 
-        {/* Next Payment Due */}
         {data.nextDueDate && (
           <div className={`border rounded-2xl p-6 shadow-xl transition-all ${isOverdue ? 'bg-rose-950/40 border-rose-500/50' : 'bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-blue-500/30'}`}>
             <h2 className={`text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${isOverdue ? 'text-rose-400' : 'text-blue-400'}`}>
@@ -227,7 +221,7 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
             </h2>
             <div className="text-center mb-6">
               <p className="text-xs text-zinc-400 uppercase font-bold mb-1">Amount Due (Includes Penalties)</p>
-              <p className="text-5xl font-black text-white font-mono mb-2">{formatCurrency(data.nextDueAmount)}</p>
+              <p className="text-5xl font-black text-white mb-2">{formatCurrency(data.nextDueAmount)}</p>
               <p className={`text-xl font-black uppercase tracking-widest ${getCountdownColor(data.nextDueDate)}`}>
                 {getCountdown(data.nextDueDate)}
               </p>
@@ -235,7 +229,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
           </div>
         )}
 
-        {/* Tab Navigation */}
         <div className="flex overflow-x-auto gap-2 no-scrollbar pb-1">
           {(['overview', 'schedule', 'history', 'chat'] as const).map(tab => (
             <button
@@ -252,7 +245,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
           ))}
         </div>
 
-        {/* Tabs Content */}
         {activeTab === 'overview' && (
           <div className="space-y-4">
             <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-6">
@@ -307,7 +299,7 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
                             isLateOrOverdue ? 'bg-rose-500/20 text-rose-400' : 'bg-zinc-800 text-zinc-400'
                           }`}>{inst.period}</span>
                           <div>
-                            <p className="text-sm font-black font-mono text-white">{formatCurrency(inst.expectedAmount)}</p>
+                            <p className="text-sm font-black text-white">{formatCurrency(inst.expectedAmount)}</p>
                             <p className="text-xs font-bold text-zinc-500 uppercase">{formatDate(inst.dueDate)}</p>
                           </div>
                         </div>
@@ -345,7 +337,7 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
                         <span className="text-emerald-400 font-bold">✓</span>
                       </div>
                       <div>
-                        <p className="text-sm font-black font-mono text-white">{formatCurrency(payment.amount)}</p>
+                        <p className="text-sm font-black text-white">{formatCurrency(payment.amount)}</p>
                         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                           {formatDate(payment.paymentDate)} • INST #{payment.periodNumber}
                         </p>
@@ -361,7 +353,6 @@ export default function ClientDashboardClient({ data }: { data: DashboardData })
           </div>
         )}
 
-        {/* 🚀 NEW: 3-WAY CENTRALIZED CHAT BOX */}
         {activeTab === 'chat' && (
           <div className="bg-zinc-900 border border-zinc-700 rounded-2xl flex flex-col h-[500px] shadow-xl overflow-hidden">
             <div className="p-4 bg-emerald-950/30 border-b border-emerald-900/50 flex justify-between items-center">
