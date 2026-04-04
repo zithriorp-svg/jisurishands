@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { switchPortfolioAction, initializeNewYearAction } from "./actions";
+import { switchPortfolioAction, initializeNewYearAction, deletePortfolioAction } from "./actions";
 
 interface SettingsClientProps {
   activePortfolio: string;
@@ -14,6 +14,7 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
   const [newYearName, setNewYearName] = useState("");
   const [switchLoading, setSwitchLoading] = useState(false);
   const [initLoading, setInitLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   const handleSwitchPortfolio = async () => {
@@ -29,7 +30,6 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
     
     if (result.success) {
       setMessage(`✅ Switched to "${selectedPortfolio}"`);
-      // Reload to apply changes
       window.location.reload();
     } else {
       setMessage(result.error || "Failed to switch portfolio");
@@ -51,7 +51,6 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
     
     if (result.success) {
       setMessage(`✅ Created and switched to "${newYearName.trim()}"`);
-      // Reload to apply changes
       window.location.reload();
     } else {
       setMessage(result.error || "Failed to initialize new year");
@@ -60,8 +59,45 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
     setInitLoading(false);
   };
 
+  // 🚀 UPGRADED: Delete Protocol
+  const handleDeletePortfolio = async () => {
+    if (selectedPortfolio === "Main Portfolio") {
+      alert("SECURITY OVERRIDE: You cannot delete the Main Portfolio.");
+      return;
+    }
+
+    const confirm1 = confirm(`WARNING: You are about to permanently delete the portfolio "${selectedPortfolio}".\n\nThis will erase ALL clients, loans, payments, and ledgers inside it.\n\nProceed?`);
+    if (!confirm1) return;
+
+    const confirm2 = confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Are you absolutely sure?`);
+    if (!confirm2) return;
+
+    setDeleteLoading(true);
+    setMessage("Initiating destruction sequence...");
+
+    const result = await deletePortfolioAction(selectedPortfolio);
+    
+    if (result.success) {
+      setMessage(`💥 Portfolio "${selectedPortfolio}" destroyed.`);
+      window.location.reload(); // Will reload into Main Portfolio
+    } else {
+      setMessage(result.error || "Destruction failed.");
+    }
+
+    setDeleteLoading(false);
+  };
+
+  // 🚀 UPGRADED: Download CSV Protocol
+  const handleDownloadBackup = () => {
+    if (!selectedPortfolio) return;
+    
+    // Direct the user to the backup API endpoint, passing the portfolio name
+    window.open(`/api/backup?portfolio=${encodeURIComponent(selectedPortfolio)}`, '_blank');
+    setMessage(`📥 Downloading raw data for "${selectedPortfolio}"...`);
+  };
+
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-6 pb-20">
+    <div className="max-w-2xl mx-auto p-4 space-y-6 pb-20 font-sans">
       {/* Header */}
       <div className="flex justify-between items-center pt-4">
         <div>
@@ -112,6 +148,31 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
         </div>
       </div>
 
+      {/* 🚀 UPGRADED: New Portfolio Data Management Card */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
+        <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-4">Portfolio Data Management</h2>
+        <div className="space-y-3">
+          <p className="text-xs text-zinc-500 leading-relaxed mb-4">
+            Manage the data for the portfolio selected above (<span className="text-zinc-300 font-bold">{selectedPortfolio}</span>).
+          </p>
+          
+          <button
+            onClick={handleDownloadBackup}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white py-3 rounded-xl font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+          >
+            📥 Download Backup (CSV)
+          </button>
+
+          <button
+            onClick={handleDeletePortfolio}
+            disabled={deleteLoading || selectedPortfolio === "Main Portfolio"}
+            className="w-full bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-400 py-3 rounded-xl font-bold uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {deleteLoading ? "Destroying..." : "🗑️ Delete Portfolio"}
+          </button>
+        </div>
+      </div>
+
       {/* Card 2: Initialize New Year */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
         <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Start Fresh Fiscal Year</h2>
@@ -144,33 +205,10 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
 
       {/* Message */}
       {message && (
-        <div className={`p-4 rounded-xl text-sm ${message.includes("✅") ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
+        <div className={`p-4 rounded-xl text-sm font-bold ${message.includes("✅") ? "bg-emerald-500/20 text-emerald-400" : message.includes("💥") ? "bg-rose-500/20 text-rose-400" : "bg-zinc-800 text-white"}`}>
           {message}
         </div>
       )}
-
-      {/* Info Card */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
-        <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-3">How Portfolios Work</h2>
-        <ul className="text-sm text-zinc-500 space-y-2">
-          <li className="flex items-start gap-2">
-            <span className="text-yellow-400">•</span>
-            Each portfolio isolates all data (clients, loans, expenses, transactions)
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-yellow-400">•</span>
-            Switching portfolios filters the entire application
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-yellow-400">•</span>
-            New records are automatically saved to the active portfolio
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="text-yellow-400">•</span>
-            Perfect for fiscal years, branches, or separate business units
-          </li>
-        </ul>
-      </div>
     </div>
   );
 }
