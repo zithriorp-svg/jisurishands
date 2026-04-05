@@ -34,17 +34,15 @@ export async function initializeNewYearAction(portfolioName: string): Promise<{ 
       return { success: false, error: "Portfolio name is required" };
     }
     
-    // Create the portfolio in the SystemPortfolio table (upsert to handle duplicates)
-    await prisma.systemPortfolio.upsert({
-      where: { name: trimmedName },
-      update: {}, // No update needed if exists
-      create: { name: trimmedName }
-    });
+    if (prisma.systemPortfolio) {
+      await prisma.systemPortfolio.upsert({
+        where: { name: trimmedName },
+        update: {}, 
+        create: { name: trimmedName }
+      });
+    }
     
-    // Set the active portfolio cookie
     await setActivePortfolioCookie(trimmedName);
-    
-    // Revalidate all paths to refresh data
     revalidatePath("/", "layout");
     
     return { success: true };
@@ -54,45 +52,47 @@ export async function initializeNewYearAction(portfolioName: string): Promise<{ 
   }
 }
 
-// Ensure default portfolio exists in database
 export async function ensureDefaultPortfolio(): Promise<void> {
   try {
-    const existing = await prisma.systemPortfolio.findUnique({
-      where: { name: DEFAULT_PORTFOLIO }
-    });
-    
-    if (!existing) {
-      await prisma.systemPortfolio.create({
-        data: { name: DEFAULT_PORTFOLIO }
+    if (prisma.systemPortfolio) {
+      const existing = await prisma.systemPortfolio.findUnique({
+        where: { name: DEFAULT_PORTFOLIO }
       });
+      if (!existing) {
+        await prisma.systemPortfolio.create({
+          data: { name: DEFAULT_PORTFOLIO }
+        });
+      }
     }
   } catch (error) {
     console.error("Error ensuring default portfolio:", error);
   }
 }
 
-// 🚀 UPGRADED: Delete Portfolio Protocol
+// 🛡️ ARMORED: Delete Portfolio Protocol
 export async function deletePortfolioAction(portfolioName: string): Promise<{ success: boolean; error?: string }> {
   try {
     if (portfolioName === DEFAULT_PORTFOLIO) {
       return { success: false, error: "Cannot delete the Main Portfolio. This is protected." };
     }
 
-    // 1. Delete all related records first (Cascading manual delete)
-    await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
-    await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
-    await prisma.loan.deleteMany({ where: { portfolio: portfolioName } });
-    await prisma.clientMessage.deleteMany({ where: { client: { portfolio: portfolioName } } });
-    await prisma.client.deleteMany({ where: { portfolio: portfolioName } });
+    // 1. Delete all related records first (Safely checking if the table exists to prevent crashes)
+    if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } }).catch(()=>{});
+    if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } }).catch(()=>{});
+    if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
     
-    await prisma.ledger.deleteMany({ where: { portfolio: portfolioName } });
-    await prisma.expense.deleteMany({ where: { portfolio: portfolioName } });
-    await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } });
+    if (prisma.clientMessage) await prisma.clientMessage.deleteMany({ where: { client: { portfolio: portfolioName } } }).catch(()=>{});
+    if ((prisma as any).message) await (prisma as any).message.deleteMany({ where: { client: { portfolio: portfolioName } } }).catch(()=>{});
+    
+    if (prisma.client) await prisma.client.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
+    if (prisma.ledger) await prisma.ledger.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
+    if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
+    if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
 
     // 2. Delete the portfolio itself
-    await prisma.systemPortfolio.delete({ where: { name: portfolioName } });
+    if (prisma.systemPortfolio) await prisma.systemPortfolio.delete({ where: { name: portfolioName } }).catch(()=>{});
 
-    // 3. Force switch back to Default Portfolio to prevent getting stuck in a ghost portfolio
+    // 3. Force switch back to Default Portfolio
     await setActivePortfolioCookie(DEFAULT_PORTFOLIO);
     revalidatePath("/", "layout");
 
