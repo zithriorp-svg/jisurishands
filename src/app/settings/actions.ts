@@ -30,9 +30,7 @@ export async function switchPortfolioAction(portfolioName: string): Promise<{ su
 export async function initializeNewYearAction(portfolioName: string): Promise<{ success: boolean; error?: string }> {
   try {
     const trimmedName = portfolioName.trim();
-    if (!trimmedName) {
-      return { success: false, error: "Portfolio name is required" };
-    }
+    if (!trimmedName) return { success: false, error: "Portfolio name is required" };
     
     if (prisma.systemPortfolio) {
       await prisma.systemPortfolio.upsert({
@@ -47,7 +45,6 @@ export async function initializeNewYearAction(portfolioName: string): Promise<{ 
     
     return { success: true };
   } catch (error: any) {
-    console.error("Error initializing new year:", error);
     return { success: false, error: error.message };
   }
 }
@@ -55,13 +52,9 @@ export async function initializeNewYearAction(portfolioName: string): Promise<{ 
 export async function ensureDefaultPortfolio(): Promise<void> {
   try {
     if (prisma.systemPortfolio) {
-      // 🚀 THE ZOMBIE KILLER: Only create a default portfolio if ZERO portfolios exist in the whole system.
-      // It will no longer force "Main Portfolio" to resurrect if you have other portfolios like "April 2026".
       const count = await prisma.systemPortfolio.count();
       if (count === 0) {
-        await prisma.systemPortfolio.create({
-          data: { name: DEFAULT_PORTFOLIO }
-        });
+        await prisma.systemPortfolio.create({ data: { name: DEFAULT_PORTFOLIO } });
       }
     }
   } catch (error) {
@@ -71,7 +64,13 @@ export async function ensureDefaultPortfolio(): Promise<void> {
 
 export async function deletePortfolioAction(portfolioName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // 🚀 NO SILENT SHIELDS: The system will systematically wipe data. If it hits a snag, it will throw a loud error!
+    // 🚀 NEW: Destroy Collection Notes BEFORE destroying Installments
+    if ((prisma as any).collectionNote) {
+      await (prisma as any).collectionNote.deleteMany({ 
+        where: { installment: { loan: { portfolio: portfolioName } } } 
+      });
+    }
+
     if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
     if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
     if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: portfolioName } });
@@ -84,16 +83,12 @@ export async function deletePortfolioAction(portfolioName: string): Promise<{ su
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: portfolioName } });
     if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } });
 
-    // Delete the portfolio from the registry using deleteMany to avoid unique ID lookup crashes
     if (prisma.systemPortfolio) await prisma.systemPortfolio.deleteMany({ where: { name: portfolioName } });
 
-    // Figure out which portfolio to switch to next
     let nextActive = DEFAULT_PORTFOLIO;
     if (prisma.systemPortfolio) {
        const remaining = await prisma.systemPortfolio.findFirst();
-       if (remaining) {
-           nextActive = remaining.name;
-       }
+       if (remaining) nextActive = remaining.name;
     }
 
     await setActivePortfolioCookie(nextActive);
@@ -102,7 +97,6 @@ export async function deletePortfolioAction(portfolioName: string): Promise<{ su
     return { success: true };
   } catch (error: any) {
     console.error("Error deleting portfolio:", error);
-    // This will now throw the exact reason the database refused to delete the file directly to your screen!
     return { success: false, error: `Matrix Delete Error: ${error.message}` };
   }
 }
