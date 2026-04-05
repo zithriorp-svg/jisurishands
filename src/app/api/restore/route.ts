@@ -3,13 +3,17 @@ import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// Helper tool to automatically translate JSON date strings back into real Database Dates
 function reviveDates(obj: any) {
   for (const key in obj) {
     if (typeof obj[key] === 'string' && obj[key].match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
       obj[key] = new Date(obj[key]);
     }
   }
+}
+
+// 🚀 NEW: Tool to generate fake, unique IDs for duplicated clients
+function generateRandomId() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 export async function POST(request: Request) {
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
 
-    // 🚀 STRICT RECONSTRUCTION WITH ERROR REPORTING
+    // RECONSTRUCTION
     const clientMap = new Map();
     for (const c of (clients || [])) {
       const oldId = c.id;
@@ -49,17 +53,16 @@ export async function POST(request: Request) {
       c.portfolio = targetPortfolio; 
       reviveDates(c);
       
-      // 🛡️ BYPASS UNIQUE CONSTRAINT: Slightly alter the phone number so the database accepts the duplicate client!
-      if (c.phone) {
-         c.phone = c.phone + ` (Port-${targetPortfolio.substring(0,3)})`;
-      }
+      // 🛡️ BYPASS UNIQUE CONSTRAINTS: Give the copied client a new phone, new application ID, and new agent ID!
+      if (c.phone) c.phone = c.phone + ` (Port-${targetPortfolio.substring(0,3)})`;
+      if (c.applicationId) c.applicationId = `RESTORE-${generateRandomId()}`;
+      if (c.agentId) c.agentId = `RESTORE-${generateRandomId()}`;
 
       if (prisma.client) {
         try {
           const newC = await prisma.client.create({ data: c });
           clientMap.set(oldId, newC.id);
         } catch (err: any) {
-          // If it fails, scream loudly to the frontend!
           return NextResponse.json({ error: `Client Matrix Error (${c.firstName}): ${err.message}` }, { status: 500 });
         }
       }
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
     for (const l of (loans || [])) {
       const oldId = l.id;
       delete l.id;
-      l.portfolio = targetPortfolio;
+      l.portfolio = targetPortfolio; 
       l.clientId = clientMap.get(l.clientId);
       reviveDates(l);
 
@@ -113,10 +116,26 @@ export async function POST(request: Request) {
     if (prisma.ledger) {
       for (const l of (ledgers || [])) {
         delete l.id;
-        l.portfolio = targetPortfolio;
+        l.portfolio = targetPortfolio; 
         if (l.loanId) l.loanId = loanMap.get(l.loanId);
         reviveDates(l);
         await prisma.ledger.create({ data: l }).catch(()=>{});
+      }
+    }
+
+    if (prisma.expense) {
+      for (const e of (expenses || [])) {
+        delete e.id;
+        e.portfolio = targetPortfolio; 
+        await prisma.expense.create({ data: e }).catch(()=>{});
+      }
+    }
+
+    if (prisma.capitalTransaction) {
+      for (const c of (capitalTx || [])) {
+        delete c.id;
+        c.portfolio = targetPortfolio; 
+        await prisma.capitalTransaction.create({ data: c }).catch(()=>{});
       }
     }
 
