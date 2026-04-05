@@ -13,7 +13,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Portfolio name is required" }, { status: 400 });
     }
 
-    // 🛡️ BULLETPROOF QUERIES: If a table is empty or missing, it won't crash the matrix
     let clients: any[] = [];
     let loans: any[] = [];
     let installments: any[] = [];
@@ -22,13 +21,12 @@ export async function GET(request: Request) {
     let expenses: any[] = [];
     let capitalTx: any[] = [];
     let messages: any[] = [];
+    let applications: any[] = []; // 🚀 NEW: Added Applications Matrix
 
-    try { clients = await prisma.client.findMany({ where: { portfolio } }); } catch(e) { console.error("Client extract skipped"); }
-    try { loans = await prisma.loan.findMany({ where: { portfolio } }); } catch(e) { console.error("Loan extract skipped"); }
+    try { clients = await prisma.client.findMany({ where: { portfolio } }); } catch(e) {}
+    try { loans = await prisma.loan.findMany({ where: { portfolio } }); } catch(e) {}
     
     const loanIds = loans.map(l => l.id);
-    
-    // 🛡️ ANTI-GHOST PROTOCOL: Only search for payments if loans actually exist
     if (loanIds.length > 0) {
       try { installments = await prisma.loanInstallment.findMany({ where: { loanId: { in: loanIds } } }); } catch(e) {}
       try { payments = await prisma.payment.findMany({ where: { loanId: { in: loanIds } } }); } catch(e) {}
@@ -38,20 +36,23 @@ export async function GET(request: Request) {
     try { expenses = await prisma.expense.findMany({ where: { portfolio } }); } catch(e) {}
     try { capitalTx = await prisma.capitalTransaction.findMany({ where: { portfolio } }); } catch(e) {}
     try { messages = await prisma.clientMessage.findMany({ where: { client: { portfolio } } }); } catch(e) {}
+    
+    // 🚀 NEW: Fetch all applications linked to these clients
+    const appIds = clients.map(c => c.applicationId).filter(id => id !== null);
+    if (appIds.length > 0 && (prisma as any).application) {
+        try { applications = await (prisma as any).application.findMany({ where: { id: { in: appIds } } }); } catch(e) {}
+    }
 
-    // Safe Date Formatter for CSV
     const safeDate = (d: any) => d ? (typeof d.toISOString === 'function' ? d.toISOString() : new Date(d).toISOString()) : '';
 
-    // === JSON FORMAT (For Machine Restore) ===
     if (format === 'json') {
       const exportData = {
         portfolio,
         timestamp: new Date().toISOString(),
-        version: "1.0",
-        data: { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages }
+        version: "1.1",
+        data: { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages, applications } // Added here
       };
 
-      // 🛡️ ANTI-BIGINT PROTOCOL: Safely stringify large database numbers so JSON doesn't choke
       const safeJsonString = JSON.stringify(exportData, (key, value) =>
         typeof value === 'bigint' ? value.toString() : value
       , 2);
@@ -65,13 +66,12 @@ export async function GET(request: Request) {
       });
     }
 
-    // === CSV FORMAT (For Human Excel/Reading) ===
     let csvData = `--- FINTECH VAULT BACKUP: ${portfolio.toUpperCase()} ---\n\n`;
 
     csvData += "=== CLIENTS ===\n";
-    csvData += "ID,First Name,Last Name,Phone,Address,Created At\n";
+    csvData += "ID,First Name,Last Name,Phone,Application ID,Created At\n";
     clients.forEach(c => {
-      csvData += `${c.id},"${c.firstName}","${c.lastName}","${c.phone}","${c.address || ''}",${safeDate(c.createdAt)}\n`;
+      csvData += `${c.id},"${c.firstName}","${c.lastName}","${c.phone}","${c.applicationId || ''}",${safeDate(c.createdAt)}\n`;
     });
     csvData += "\n";
 
@@ -81,20 +81,6 @@ export async function GET(request: Request) {
       csvData += `${l.id},${l.clientId},${l.principal},${l.status},${l.termDuration},${l.termType},${safeDate(l.startDate)},${safeDate(l.endDate)}\n`;
     });
     csvData += "\n";
-
-    csvData += "=== PAYMENTS ===\n";
-    csvData += "Payment ID,Loan ID,Amount,Principal Portion,Interest Portion,Payment Date,Type\n";
-    payments.forEach(p => {
-      csvData += `${p.id},${p.loanId},${p.amount},${p.principalPortion},${p.interestPortion},${safeDate(p.paymentDate)},${p.paymentType}\n`;
-    });
-    csvData += "\n";
-
-    csvData += "=== LEDGER TRANSACTIONS ===\n";
-    csvData += "Ledger ID,Date,Type,Debit Account,Credit Account,Amount\n";
-    ledgers.forEach(l => {
-      const dateVal = safeDate(l.createdAt || l.date);
-      csvData += `${l.id},${dateVal},${l.transactionType},${l.debitAccount},${l.creditAccount},${l.amount}\n`;
-    });
 
     return new NextResponse(csvData, {
       status: 200,
@@ -106,6 +92,6 @@ export async function GET(request: Request) {
 
   } catch (error) {
     console.error("Backup extraction failed:", error);
-    return NextResponse.json({ error: "Failed to extract backup data. Check Vercel logs." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to extract backup data." }, { status: 500 });
   }
 }
