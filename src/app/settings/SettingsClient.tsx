@@ -55,13 +55,13 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
     setDeleteLoading(false);
   };
 
-  // 🚀 UPGRADED: Supports both CSV and JSON
   const handleDownloadBackup = (format: 'csv' | 'json') => {
     if (!selectedPortfolio) return;
     window.open(`/api/backup?portfolio=${encodeURIComponent(selectedPortfolio)}&format=${format}`, '_blank');
     setMessage(`📥 Downloading ${format.toUpperCase()} Backup for "${selectedPortfolio}"...`);
   };
 
+  // 🚀 UPGRADED: Forgiving JSON Parser
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -77,7 +77,18 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
 
     try {
       const text = await file.text();
-      const backupData = JSON.parse(text);
+      
+      // We safely parse the JSON, ensuring we catch any hidden structural errors.
+      let backupData;
+      try {
+         backupData = JSON.parse(text);
+      } catch (parseError) {
+         console.error("JSON Parsing Error:", parseError);
+         setMessage("Error: The file is corrupted or not a valid JSON. Please download a fresh backup.");
+         setRestoreLoading(false);
+         if (fileInputRef.current) fileInputRef.current.value = '';
+         return;
+      }
 
       const res = await fetch('/api/restore', {
         method: 'POST',
@@ -92,8 +103,9 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
       } else {
         setMessage(`Matrix Error: ${data.error}`);
       }
-    } catch (err) {
-      setMessage("Error reading file. Ensure it is a valid .json Vault Backup.");
+    } catch (err: any) {
+       console.error("Network/Upload Error:", err);
+       setMessage(`Upload Error: ${err.message}`);
     }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
