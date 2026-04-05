@@ -12,9 +12,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid Vault Backup payload" }, { status: 400 });
     }
 
+    // 🚀 NEW: Officially register the new portfolio name in the system so it appears in the dropdown!
+    if (prisma.systemPortfolio) {
+      await prisma.systemPortfolio.upsert({
+        where: { name: targetPortfolio },
+        update: {},
+        create: { name: targetPortfolio }
+      });
+    }
+
     const { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages } = backupData.data;
 
-    // 🛡️ ARMORED TACTICAL WIPE: Safely check if tables exist before deleting
+    // 🛡️ ARMORED TACTICAL WIPE (Only affects the specific target portfolio name you provide)
     if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: targetPortfolio } } }).catch(()=>{});
     if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: targetPortfolio } } }).catch(()=>{});
     if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
@@ -27,7 +36,7 @@ export async function POST(request: Request) {
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
 
-    // RECONSTRUCTION
+    // RECONSTRUCTION (Injects data strictly into the new portfolio name)
     const clientMap = new Map();
     for (const c of (clients || [])) {
       const oldId = c.id;
@@ -106,4 +115,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
