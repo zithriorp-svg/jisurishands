@@ -62,7 +62,11 @@ export default function LoanCalculator({
   preselectedAgentId
 }: LoanCalculatorProps) {
   const [principal, setPrincipal] = useState<number>(suggestedPrincipal);
-  const [interestRate, setInterestRate] = useState<number>(6); // 6% effective rate
+  
+  // 🚀 UPGRADE: Manual control for Official vs Discounted rates
+  const [officialRate, setOfficialRate] = useState<number>(10);
+  const [discountedRate, setDiscountedRate] = useState<number>(6);
+
   const [termDuration, setTermDuration] = useState<number>(suggestedDuration || 3);
   const [termType, setTermType] = useState<"Days" | "Weeks" | "Months">(
     (suggestedTermType as "Days" | "Weeks" | "Months") || "Months"
@@ -112,15 +116,13 @@ export default function LoanCalculator({
     return () => controller.abort();
   }, []);
 
-  // 🚀 ANTI-BLEEDING: Forced Exact Totals
-  const totalInterest = Number((principal * (interestRate / 100)).toFixed(2));
+  // 🚀 MATH UPGRADE: Using the Discounted Rate for the actual amortization
+  const totalInterest = Number((principal * (discountedRate / 100)).toFixed(2));
   const totalRepayment = Number((principal + totalInterest).toFixed(2));
 
-  // G1C: Liquidity safety check
   const insufficientLiquidity = vaultCash !== null && principal > vaultCash;
   const liquidityDeficit = insufficientLiquidity ? principal - (vaultCash || 0) : 0;
 
-  // 🚀 ANTI-BLEEDING: The Sweeper Engine
   const calculateSchedule = () => {
     const newSchedule: AmortizationRow[] = [];
     const startDate = new Date();
@@ -148,11 +150,9 @@ export default function LoanCalculator({
       let strictInterest = 0;
 
       if (isLastPeriod) {
-        // The final payment sweeps up all exact remaining pennies
         strictPrincipal = Number(remainingPrincipalToDistribute.toFixed(2));
         strictInterest = Number(remainingInterestToDistribute.toFixed(2));
       } else {
-        // Force strict 2-decimal rounding for regular payments
         strictPrincipal = Number((principal / termDuration).toFixed(2));
         strictInterest = Number((totalInterest / termDuration).toFixed(2));
         
@@ -161,11 +161,9 @@ export default function LoanCalculator({
       }
 
       const strictTotalAmount = Number((strictPrincipal + strictInterest).toFixed(2));
-      
       const remainingBalanceBeforeThisPayment = isLastPeriod 
         ? strictTotalAmount 
         : Number(((remainingPrincipalToDistribute + remainingInterestToDistribute) + strictTotalAmount).toFixed(2));
-      
       const finalRemainingBalance = isLastPeriod ? 0 : Number((remainingBalanceBeforeThisPayment - strictTotalAmount).toFixed(2));
       
       newSchedule.push({
@@ -200,7 +198,7 @@ export default function LoanCalculator({
     const loanData: LoanDisbursementData = {
       applicationId,
       principal,
-      interestRate,
+      interestRate: discountedRate, // Passing the custom rate to the database
       termDuration,
       termType,
       totalInterest,
@@ -221,8 +219,6 @@ export default function LoanCalculator({
 
   const inputStyle = "w-full bg-[#1c1c21] border border-[#2a2a35] text-white font-bold p-3 rounded-xl outline-none focus:border-[#00df82] transition-colors";
   const labelStyle = "text-xs text-gray-500 font-bold uppercase tracking-widest";
-
-  // Display value for "Per Period" calculation
   const displayPaymentPerPeriod = termDuration > 0 ? totalRepayment / termDuration : 0;
 
   return (
@@ -235,7 +231,7 @@ export default function LoanCalculator({
       <div className="hidden print:block mb-4">
         <h1 className="text-xl font-bold text-black">LOAN DISBURSEMENT</h1>
         <p className="text-sm text-gray-600">Borrower: {applicantName}</p>
-        <p className="text-sm text-gray-600">Principal: ₱{principal.toLocaleString()} | Interest: 10% Official (6% Discounted Rate with Good Payer Discount)</p>
+        <p className="text-sm text-gray-600">Principal: ₱{principal.toLocaleString()} | Interest: {officialRate}% Official ({discountedRate}% Discounted Rate with Good Payer Discount)</p>
       </div>
 
       <div className="print:hidden">
@@ -253,9 +249,6 @@ export default function LoanCalculator({
             </option>
           ))}
         </select>
-        {selectedAgentId && (
-          <p className="text-xs text-emerald-400 mt-1">✓ Agent will be assigned as Co-Maker for this loan</p>
-        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 print:hidden">
@@ -269,20 +262,32 @@ export default function LoanCalculator({
             min="100"
           />
         </div>
-        <div>
-          <label className={labelStyle}>INTEREST RATE STRUCTURE</label>
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <div>
-              <label className="text-xs text-zinc-400 font-bold">OFFICIAL RATE (%)</label>
-              <input type="number" value={10} readOnly className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-red-400 font-mono line-through" />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-400 font-bold">DISCOUNTED RATE (%)</label>
-              <input type="number" value={6} readOnly className="w-full bg-black border border-emerald-700 rounded-xl p-3 text-emerald-400 font-mono font-bold" />
-            </div>
+
+        {/* 🚀 UPGRADE: Editable Interest Rates */}
+        <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-black/50 border border-[#2a2a35] rounded-xl">
+          <div>
+            <label className="text-[10px] text-red-400 font-black uppercase tracking-widest block mb-1">Official Rate (%)</label>
+            <input 
+              type="number" 
+              value={officialRate} 
+              onChange={e => { setOfficialRate(Number(e.target.value)); setCalculated(false); }}
+              className="w-full bg-zinc-900 border border-red-900/40 rounded-lg p-2 text-red-400 font-mono" 
+            />
           </div>
-          <p className="text-xs text-zinc-500 mt-2 italic">* Schedule generated at 6% (Good Payer Discount). If client defaults, rate reverts to 10% per contract.</p>
+          <div>
+            <label className="text-[10px] text-emerald-400 font-black uppercase tracking-widest block mb-1">Discounted Rate (%)</label>
+            <input 
+              type="number" 
+              value={discountedRate} 
+              onChange={e => { setDiscountedRate(Number(e.target.value)); setCalculated(false); }}
+              className="w-full bg-black border border-emerald-900/40 rounded-lg p-2 text-emerald-400 font-mono font-bold" 
+            />
+          </div>
+          <p className="col-span-2 text-[10px] text-zinc-500 italic mt-1">
+            * Logic: Official {officialRate}% vs Good Payer {discountedRate}% (-{Math.round(officialRate - discountedRate)}% Discount)
+          </p>
         </div>
+
         <div>
           <label className={labelStyle}>Duration</label>
           <input
@@ -293,7 +298,7 @@ export default function LoanCalculator({
             min="1"
           />
         </div>
-        <div className="col-span-2">
+        <div>
           <label className={labelStyle}>Term Type</label>
           <select
             value={termType}
@@ -333,16 +338,16 @@ export default function LoanCalculator({
       {showSchedule && schedule.length > 0 && (
         <div className="border border-[#2a2a35] rounded-xl overflow-hidden print:border-black">
           <div className="flex justify-between items-center p-3 bg-[#1c1c21] print:bg-gray-100">
-            <h4 className="font-bold text-white print:text-black">📅 FINAL AMORTIZATION SCHEDULE</h4>
+            <h4 className="font-bold text-white print:text-black text-xs">📅 FINAL AMORTIZATION SCHEDULE</h4>
             <button 
               type="button" 
               onClick={() => window.print()} 
-              className="print:hidden bg-zinc-800 hover:bg-zinc-700 text-xs text-white py-1 px-3 rounded border border-zinc-600 transition-colors flex items-center gap-2"
+              className="print:hidden bg-zinc-800 hover:bg-zinc-700 text-[10px] text-white py-1 px-3 rounded border border-zinc-600 transition-colors uppercase font-bold"
             >
-              📥 Download / Save PDF
+              📄 Print / Save PDF
             </button>
           </div>
-          <div className="bg-[#1c1c21] p-3 text-xs font-bold text-gray-400 flex justify-between uppercase tracking-wider print:bg-gray-50 print:text-black print:border-b print:border-black">
+          <div className="bg-[#1c1c21] p-3 text-[10px] font-black text-gray-400 flex justify-between uppercase tracking-wider print:bg-gray-50 print:text-black print:border-b print:border-black">
             <span className="w-16">Period</span>
             <span className="w-24">Due Date</span>
             <span className="w-28 text-right">Payment</span>
@@ -350,10 +355,10 @@ export default function LoanCalculator({
           </div>
           <div className="max-h-48 overflow-y-auto print:max-h-none print:overflow-visible">
             {schedule.map((row) => (
-              <div key={row.period} className="p-3 border-t border-[#2a2a35] flex justify-between text-sm bg-[#0f0f13] print:bg-white print:border-gray-300">
+              <div key={row.period} className="p-3 border-t border-[#2a2a35] flex justify-between text-xs bg-[#0f0f13] print:bg-white print:border-gray-300">
                 <span className="w-16 text-gray-400 print:text-black">{row.period} {termType.slice(0, -1)}</span>
-                <span className="w-24 text-gray-300 text-xs print:text-black">{formatDate(row.paymentDate)}</span>
-                <span className="w-28 text-right text-[#00df82] font-bold print:text-black">{formatCurrency(row.amount)}</span>
+                <span className="w-24 text-gray-300 text-[10px] print:text-black font-mono">{formatDate(row.paymentDate)}</span>
+                <span className="w-28 text-right text-[#00df82] font-black print:text-black">{formatCurrency(row.amount)}</span>
                 <span className="w-28 text-right text-white print:text-black">{formatCurrency(row.remainingBalance)}</span>
               </div>
             ))}
@@ -363,18 +368,8 @@ export default function LoanCalculator({
 
       {insufficientLiquidity && (
         <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 print:hidden">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">⚠️</span>
-            <div>
-              <p className="text-red-400 font-bold uppercase tracking-wider text-sm">INSUFFICIENT VAULT LIQUIDITY</p>
-              <div className="mt-2 space-y-1 text-sm">
-                <p className="text-zinc-300">Required: <span className="text-red-400 font-bold">{formatCurrency(principal)}</span></p>
-                <p className="text-zinc-300">Available: <span className="text-emerald-400 font-bold">{formatCurrency(vaultCash || 0)}</span></p>
-                <p className="text-zinc-300">Deficit: <span className="text-red-400 font-bold">{formatCurrency(liquidityDeficit)}</span></p>
-              </div>
-              <p className="text-zinc-500 text-xs mt-2">Deposit additional capital to Treasury to enable disbursement.</p>
-            </div>
-          </div>
+          <p className="text-red-400 font-bold uppercase tracking-wider text-xs">⚠️ INSUFFICIENT VAULT LIQUIDITY</p>
+          <p className="text-zinc-500 text-[10px] mt-1">Deficit: {formatCurrency(liquidityDeficit)}</p>
         </div>
       )}
 
@@ -383,15 +378,15 @@ export default function LoanCalculator({
           type="button"
           onClick={handleDisburse}
           disabled={!calculated || isProcessing || insufficientLiquidity}
-          className="flex-1 bg-[#00df82] text-[#09090b] font-black py-4 rounded-xl hover:bg-[#00df82]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors uppercase tracking-widest text-sm shadow-[0_0_15px_rgba(0,223,130,0.2)]"
+          className="flex-1 bg-[#00df82] text-[#09090b] font-black py-4 rounded-xl hover:bg-[#00df82]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(0,223,130,0.2)]"
         >
-          {isProcessing ? "Processing..." : insufficientLiquidity ? "⛔ Insufficient Funds" : "✓ Disburse Loan"}
+          {isProcessing ? "Processing..." : insufficientLiquidity ? "⛔ NO FUNDS" : "✓ DISBURSE LOAN"}
         </button>
         <button
           type="button"
           onClick={onReject}
           disabled={isProcessing}
-          className="px-5 bg-red-500/10 text-red-500 border border-red-500/30 font-bold rounded-xl hover:bg-red-500/20 disabled:opacity-50 transition-colors text-sm uppercase tracking-widest"
+          className="px-5 bg-red-500/10 text-red-500 border border-red-500/30 font-bold rounded-xl hover:bg-red-500/20 disabled:opacity-50 transition-colors text-[10px] uppercase tracking-widest"
         >
           Drop
         </button>
@@ -399,3 +394,4 @@ export default function LoanCalculator({
     </div>
   );
 }
+
