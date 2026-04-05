@@ -42,12 +42,16 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
   });
   
   const [principal, setPrincipal] = useState<number>(0);
-  const [termType, setTermType] = useState<string>("Months");
+  const [termType, setTermType] = useState<string>("Weeks");
   const [agentId, setAgentId] = useState<string>("");
 
-  const baseInterestRate = 0.10;
-  const discountRate = 0.04;
-  const effectiveRate = 0.06;
+  // 🚀 UPGRADE: Fully manual, adjustable interest rates!
+  const [manualOfficialRate, setManualOfficialRate] = useState<number>(10);
+  const [manualDiscountedRate, setManualDiscountedRate] = useState<number>(6);
+
+  const baseInterestRate = manualOfficialRate / 100;
+  const effectiveRate = manualDiscountedRate / 100;
+  const discountRate = baseInterestRate - effectiveRate;
 
   const baseInterest = principal * baseInterestRate;
   const discountAmount = principal * discountRate;
@@ -205,7 +209,8 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
         principal,
         termType,
         termDuration: optimalDuration,
-        interestRate: 6,
+        // 🚀 UPGRADE: Passing the manually selected discounted rate to the database
+        interestRate: manualDiscountedRate, 
         totalInterest: netInterest,
         totalRepayment: totalDue,
         perPeriodAmount: perPeriod,
@@ -318,17 +323,17 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
               <h3 className="font-bold text-black text-base mb-3 border-b border-black pb-2">MGA TUNTUNIN AT KUNDISYON (Terms and Conditions)</h3>
               <ol className="list-decimal pl-5 space-y-2 break-words">
                 <li className="break-words text-black">
-                  <strong>INTERES AT GOOD PAYER DISCOUNT:</strong> Ang opisyal na flat-rate interest ng utang na ito ay <strong>10%</strong>. PERO, kung ang NANGUTANG ay magbabayad ng tama sa oras sa lahat ng kanyang iskedul, siya ay bibigyan ng <strong>4% Good Payer Discount</strong> (kaya magiging 6% na lamang ang epektibong interes).
+                  <strong>INTERES AT GOOD PAYER DISCOUNT:</strong> Ang opisyal na flat-rate interest ng utang na ito ay <strong>{manualOfficialRate}%</strong>. PERO, kung ang NANGUTANG ay magbabayad ng tama sa oras sa lahat ng kanyang iskedul, siya ay bibigyan ng <strong>{Math.round(manualOfficialRate - manualDiscountedRate)}% Good Payer Discount</strong> (kaya magiging {manualDiscountedRate}% na lamang ang epektibong interes).
                   <br/>
                   <span className="text-gray-600 text-xs italic mt-1 block">
-                    (Simpleng paliwanag: Kung palagi kang on-time, 6% lang ang tubo ng utang mo. Pero kapag na-late ka kahit isang araw sa iyong hulog, ma-vo-void ang discount at sisingilin ka ng buong 10% interes para sa buong kontrata.)
+                    (Simpleng paliwanag: Kung palagi kang on-time, {manualDiscountedRate}% lang ang tubo ng utang mo. Pero kapag na-late ka kahit isang araw sa iyong hulog, ma-vo-void ang discount at sisingilin ka ng buong {manualOfficialRate}% interes para sa buong kontrata.)
                   </span>
                 </li>
                 <li className="break-words text-black">
-                  <strong>LOAN EXTENSION (ROLLOVER):</strong> Kung sakaling matapos ang kontrata at hindi pa kayang bayaran ng buo ang utang, ang NANGUTANG ay maaaring humingi ng palugit (Rollover). Upang ma-extend ang utang, kailangang magbayad ng <strong>Extension Fee</strong> na katumbas ng 6% ng orihinal na Principal.
+                  <strong>LOAN EXTENSION (ROLLOVER):</strong> Kung sakaling matapos ang kontrata at hindi pa kayang bayaran ng buo ang utang, ang NANGUTANG ay maaaring humingi ng palugit (Rollover). Upang ma-extend ang utang, kailangang magbayad ng <strong>Extension Fee</strong> na katumbas ng {manualDiscountedRate}% ng orihinal na Principal.
                   <br/>
                   <span className="text-gray-600 text-xs italic mt-1 block">
-                    (Simpleng paliwanag: Kung ₱20,000 ang utang mo at hindi mo mabayaran sa due date, kailangan mong magbayad ng ₱1,200 Extension Fee para mabigyan ka ng panibagong palugit. Ang ₱1,200 na ito ay fee lamang at HINDI ibabawas sa utang mong ₱20,000.)
+                    (Simpleng paliwanag: Kung ₱20,000 ang utang mo at hindi mo mabayaran sa due date, kailangan mong magbayad ng ₱{Math.round(20000 * (manualDiscountedRate/100))} Extension Fee para mabigyan ka ng panibagong palugit. Ang ₱{Math.round(20000 * (manualDiscountedRate/100))} na ito ay fee lamang at HINDI ibabawas sa utang mong ₱20,000.)
                   </span>
                 </li>
                 <li className="break-words text-black">Ang nag PAUTANG ay may karapatang mangolekta o maningil ng utang sa pamamagitan ng mga lehitimong paraan tulad ng pagbisita sa bahay, pagtawag, o pagsulat ng liham.</li>
@@ -391,7 +396,7 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
+              <div className="col-span-2">
                 <label className="text-xs text-zinc-400 block mb-1">Assigned Agent / Co-Maker (Optional)</label>
                 <select name="agentId" value={agentId} onChange={(e) => setAgentId(e.target.value)} className="w-full bg-black border border-zinc-800 rounded p-2 text-white text-sm">
                   <option value="">No Agent Assigned</option>
@@ -400,6 +405,7 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                   ))}
                 </select>
               </div>
+
               <div>
                 <label className="text-xs text-zinc-400 block mb-1">Term Type</label>
                 <select name="termType" value={termType} onChange={(e) => setTermType(e.target.value)} className="w-full bg-black border border-zinc-800 rounded p-2 text-white text-sm">
@@ -408,13 +414,25 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                   <option value="Months">Monthly Payments</option>
                 </select>
               </div>
+
               <div>
                 <label className="text-xs text-zinc-400 block mb-1">Principal Amount (₱)</label>
                 <input type="number" name="principal" value={principal || ""} onChange={(e) => setPrincipal(Number(e.target.value))} className="w-full bg-black border border-zinc-800 rounded p-2 text-white text-sm" placeholder="e.g. 5000" required min="100" />
               </div>
-              <div>
-                <label className="text-xs text-zinc-400 block mb-1">Official Interest Rate (%)</label>
-                <input type="number" value="10" readOnly className="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-zinc-400 cursor-not-allowed text-sm" />
+              
+              {/* 🚀 UPGRADE: Manual Rate Controls */}
+              <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#1c1c21] rounded border border-zinc-800 mt-2">
+                 <div>
+                   <label className="text-[10px] text-red-400 font-bold uppercase tracking-widest block mb-1">Official Rate (%)</label>
+                   <input type="number" value={manualOfficialRate} onChange={(e) => setManualOfficialRate(Number(e.target.value))} className="w-full bg-black border border-red-900/50 rounded p-2 text-red-400 text-sm" />
+                 </div>
+                 <div>
+                   <label className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest block mb-1">Discounted Rate (%)</label>
+                   <input type="number" value={manualDiscountedRate} onChange={(e) => setManualDiscountedRate(Number(e.target.value))} className="w-full bg-black border border-emerald-900/50 rounded p-2 text-emerald-400 text-sm font-bold" />
+                 </div>
+                 <div className="col-span-2 text-[10px] text-zinc-500 italic mt-1">
+                   * Schedule generated at {manualDiscountedRate}% (Good Payer Discount). If client defaults, rate reverts to {manualOfficialRate}% per contract.
+                 </div>
               </div>
             </div>
 
@@ -438,11 +456,11 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
               
               <div className="border-t border-zinc-700 pt-3 mt-3">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-zinc-400 text-sm">Official Interest (10%):</span>
+                  <span className="text-zinc-400 text-sm">Official Interest ({manualOfficialRate}%):</span>
                   <span className="text-red-400 line-through">₱{baseInterest.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center mb-2 pb-2 border-b border-dashed border-zinc-700">
-                  <span className="text-emerald-400 text-sm font-bold">⭐ Good Payer Discount (-4%):</span>
+                  <span className="text-emerald-400 text-sm font-bold">⭐ Good Payer Discount (-{Math.round((discountRate)*100)}%):</span>
                   <span className="text-emerald-400 font-bold">- ₱{discountAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center mb-2">
@@ -496,7 +514,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
               <input name="phone" required placeholder="Phone Number" className={`${rapidInputStyle} col-span-2`} onChange={e => setFormData({...formData, phone: e.target.value})} />
               <input name="address" required placeholder="Current Address" className={`${rapidInputStyle} col-span-2 border-b-0`} onChange={e => setFormData({...formData, address: e.target.value})} />
               
-              {/* 🚀 RESTORED: Social Recon & Emergency References */}
               <div className="col-span-2 p-3 bg-[#1c1c21] text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-[#2a2a35]">Social Recon & Emergency Reference</div>
               <input name="fbProfileUrl" required placeholder="Facebook Profile Link (https://www.facebook.com/share/...)" className={`${rapidInputStyle} col-span-2 text-blue-400`} onChange={e => setFormData({...formData, fbProfileUrl: e.target.value})} />
               <input name="locationUrl" required placeholder="Google Maps Link (https://maps.app.goo.gl/...)" className={`${rapidInputStyle} col-span-2 text-emerald-400`} onChange={e => setFormData({...formData, locationUrl: e.target.value})} />
@@ -609,18 +626,14 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                 <h3 className="font-bold text-white text-base mb-3 border-b border-zinc-700 pb-2">MGA TUNTUNIN AT KUNDISYON (Terms and Conditions)</h3>
                 <ol className="list-decimal pl-5 space-y-2 break-words">
                   <li className="break-words">
-                    <strong>INTERES AT GOOD PAYER DISCOUNT:</strong> Ang opisyal na flat-rate interest ng utang na ito ay <strong className="text-amber-400">10%</strong>. PERO, kung ang NANGUTANG ay magbabayad ng tama sa oras sa lahat ng kanyang iskedul, siya ay bibigyan ng <strong className="text-emerald-400">4% Good Payer Discount</strong> (kaya magiging 6% na lamang ang epektibong interes). 
+                    <strong>INTERES AT GOOD PAYER DISCOUNT:</strong> Ang opisyal na flat-rate interest ng utang na ito ay <strong className="text-amber-400">{manualOfficialRate}%</strong>. PERO, kung ang NANGUTANG ay magbabayad ng tama sa oras sa lahat ng kanyang iskedul, siya ay bibigyan ng <strong className="text-emerald-400">{Math.round(manualOfficialRate - manualDiscountedRate)}% Good Payer Discount</strong> (kaya magiging {manualDiscountedRate}% na lamang ang epektibong interes). 
                     <br/>
                     <span className="text-zinc-400 text-[11px] italic mt-1 block">
-                      (Simpleng paliwanag: Kung palagi kang on-time, 6% lang ang tubo ng utang mo. Pero kapag na-late ka kahit isang araw sa iyong hulog, ma-vo-void ang discount at sisingilin ka ng buong 10% interes para sa buong kontrata.)
+                      (Simpleng paliwanag: Kung palagi kang on-time, {manualDiscountedRate}% lang ang tubo ng utang mo. Pero kapag na-late ka kahit isang araw sa iyong hulog, ma-vo-void ang discount at sisingilin ka ng buong {manualOfficialRate}% interes para sa buong kontrata.)
                     </span>
                   </li>
                   <li className="break-words">
-                    <strong>LOAN EXTENSION (ROLLOVER):</strong> Kung sakaling matapos ang kontrata at hindi pa kayang bayaran ng buo ang utang, ang NANGUTANG ay maaaring humingi ng palugit (Rollover). Upang ma-extend ang utang, kailangang magbayad ng <strong className="text-amber-400">Extension Fee</strong> na katumbas ng 6% ng orihinal na Principal.
-                    <br/>
-                    <span className="text-zinc-400 text-[11px] italic mt-1 block">
-                      (Simpleng paliwanag: Kung ₱20,000 ang utang mo at hindi mo mabayaran sa due date, kailangan mong magbayad ng ₱1,200 Extension Fee para mabigyan ka ng panibagong palugit. Ang ₱1,200 na ito ay fee lamang at HINDI ibabawas sa utang mong ₱20,000.)
-                    </span>
+                    <strong>LOAN EXTENSION (ROLLOVER):</strong> Kung sakaling matapos ang kontrata at hindi pa kayang bayaran ng buo ang utang, ang NANGUTANG ay maaaring humingi ng palugit (Rollover). Upang ma-extend ang utang, kailangang magbayad ng <strong className="text-amber-400">Extension Fee</strong> na katumbas ng {manualDiscountedRate}% ng orihinal na Principal.
                   </li>
                   <li className="break-words">Ang nag PAUTANG ay may karapatang mangolekta o maningil ng utang sa pamamagitan ng mga lehitimong paraan tulad ng pagbisita sa bahay, pagtawag, o pagsulat ng liham.</li>
                   <li className="break-words">Ang mga impormasyong ibinigay ng NANGUTANG ay totoo at tama. Ang anumang maling impormasyon ay maaaring maging dahilan ng agarang pagbabayad ng buong halaga.</li>
