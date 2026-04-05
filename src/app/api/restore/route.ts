@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid Vault Backup payload" }, { status: 400 });
     }
 
-    // 🚀 NEW: Officially register the new portfolio name in the system so it appears in the dropdown!
+    // Officially register the new portfolio name
     if (prisma.systemPortfolio) {
       await prisma.systemPortfolio.upsert({
         where: { name: targetPortfolio },
@@ -23,27 +23,26 @@ export async function POST(request: Request) {
 
     const { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages } = backupData.data;
 
-    // 🛡️ ARMORED TACTICAL WIPE (Only affects the specific target portfolio name you provide)
+    // 🛡️ ARMORED TACTICAL WIPE (Clear target portfolio just in case)
     if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: targetPortfolio } } }).catch(()=>{});
     if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: targetPortfolio } } }).catch(()=>{});
     if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
-    
     if (prisma.clientMessage) await prisma.clientMessage.deleteMany({ where: { client: { portfolio: targetPortfolio } } }).catch(()=>{});
     if ((prisma as any).message) await (prisma as any).message.deleteMany({ where: { client: { portfolio: targetPortfolio } } }).catch(()=>{});
-    
     if (prisma.client) await prisma.client.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.ledger) await prisma.ledger.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
 
-    // RECONSTRUCTION (Injects data strictly into the new portfolio name)
+    // 🚀 STRICT RECONSTRUCTION: Forcing the 'targetPortfolio' onto every single record
+
     const clientMap = new Map();
     for (const c of (clients || [])) {
       const oldId = c.id;
       delete c.id; 
-      c.portfolio = targetPortfolio;
+      c.portfolio = targetPortfolio; // FORCE NEW NAME
       if (prisma.client) {
-        const newC = await prisma.client.create({ data: c }).catch(()=>null);
+        const newC = await prisma.client.create({ data: c }).catch((e)=>{ console.error("Client Error", e); return null; });
         if (newC) clientMap.set(oldId, newC.id);
       }
     }
@@ -52,10 +51,10 @@ export async function POST(request: Request) {
     for (const l of (loans || [])) {
       const oldId = l.id;
       delete l.id;
-      l.portfolio = targetPortfolio;
+      l.portfolio = targetPortfolio; // FORCE NEW NAME
       l.clientId = clientMap.get(l.clientId);
       if (l.clientId && prisma.loan) {
-        const newL = await prisma.loan.create({ data: l }).catch(()=>null);
+        const newL = await prisma.loan.create({ data: l }).catch((e)=>{ console.error("Loan Error", e); return null; });
         if (newL) loanMap.set(oldId, newL.id);
       }
     }
@@ -87,7 +86,7 @@ export async function POST(request: Request) {
     if (prisma.ledger) {
       for (const l of (ledgers || [])) {
         delete l.id;
-        l.portfolio = targetPortfolio;
+        l.portfolio = targetPortfolio; // FORCE NEW NAME
         if (l.loanId) l.loanId = loanMap.get(l.loanId);
         await prisma.ledger.create({ data: l }).catch(()=>{});
       }
@@ -96,7 +95,7 @@ export async function POST(request: Request) {
     if (prisma.expense) {
       for (const e of (expenses || [])) {
         delete e.id;
-        e.portfolio = targetPortfolio;
+        e.portfolio = targetPortfolio; // FORCE NEW NAME
         await prisma.expense.create({ data: e }).catch(()=>{});
       }
     }
@@ -104,7 +103,7 @@ export async function POST(request: Request) {
     if (prisma.capitalTransaction) {
       for (const c of (capitalTx || [])) {
         delete c.id;
-        c.portfolio = targetPortfolio;
+        c.portfolio = targetPortfolio; // FORCE NEW NAME
         await prisma.capitalTransaction.create({ data: c }).catch(()=>{});
       }
     }
