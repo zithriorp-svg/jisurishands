@@ -55,10 +55,10 @@ export async function initializeNewYearAction(portfolioName: string): Promise<{ 
 export async function ensureDefaultPortfolio(): Promise<void> {
   try {
     if (prisma.systemPortfolio) {
-      const existing = await prisma.systemPortfolio.findUnique({
-        where: { name: DEFAULT_PORTFOLIO }
-      });
-      if (!existing) {
+      // 🚀 THE ZOMBIE KILLER: Only create a default portfolio if ZERO portfolios exist in the whole system.
+      // It will no longer force "Main Portfolio" to resurrect if you have other portfolios like "April 2026".
+      const count = await prisma.systemPortfolio.count();
+      if (count === 0) {
         await prisma.systemPortfolio.create({
           data: { name: DEFAULT_PORTFOLIO }
         });
@@ -69,29 +69,40 @@ export async function ensureDefaultPortfolio(): Promise<void> {
   }
 }
 
-// ☢️ SAFETY LOCK REMOVED: You can now delete ANY portfolio.
 export async function deletePortfolioAction(portfolioName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } }).catch(()=>{});
-    if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } }).catch(()=>{});
-    if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
+    // 🚀 NO SILENT SHIELDS: The system will systematically wipe data. If it hits a snag, it will throw a loud error!
+    if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
+    if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } });
+    if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: portfolioName } });
     
-    if (prisma.clientMessage) await prisma.clientMessage.deleteMany({ where: { client: { portfolio: portfolioName } } }).catch(()=>{});
-    if ((prisma as any).message) await (prisma as any).message.deleteMany({ where: { client: { portfolio: portfolioName } } }).catch(()=>{});
+    if (prisma.clientMessage) await prisma.clientMessage.deleteMany({ where: { client: { portfolio: portfolioName } } });
+    if ((prisma as any).message) await (prisma as any).message.deleteMany({ where: { client: { portfolio: portfolioName } } });
     
-    if (prisma.client) await prisma.client.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
-    if (prisma.ledger) await prisma.ledger.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
-    if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
-    if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
+    if (prisma.client) await prisma.client.deleteMany({ where: { portfolio: portfolioName } });
+    if (prisma.ledger) await prisma.ledger.deleteMany({ where: { portfolio: portfolioName } });
+    if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: portfolioName } });
+    if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } });
 
-    if (prisma.systemPortfolio) await prisma.systemPortfolio.delete({ where: { name: portfolioName } }).catch(()=>{});
+    // Delete the portfolio from the registry using deleteMany to avoid unique ID lookup crashes
+    if (prisma.systemPortfolio) await prisma.systemPortfolio.deleteMany({ where: { name: portfolioName } });
 
-    await setActivePortfolioCookie(DEFAULT_PORTFOLIO);
+    // Figure out which portfolio to switch to next
+    let nextActive = DEFAULT_PORTFOLIO;
+    if (prisma.systemPortfolio) {
+       const remaining = await prisma.systemPortfolio.findFirst();
+       if (remaining) {
+           nextActive = remaining.name;
+       }
+    }
+
+    await setActivePortfolioCookie(nextActive);
     revalidatePath("/", "layout");
 
     return { success: true };
   } catch (error: any) {
     console.error("Error deleting portfolio:", error);
-    return { success: false, error: error.message || "Failed to delete portfolio. Please check database logs." };
+    // This will now throw the exact reason the database refused to delete the file directly to your screen!
+    return { success: false, error: `Matrix Delete Error: ${error.message}` };
   }
 }
