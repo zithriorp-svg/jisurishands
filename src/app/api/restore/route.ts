@@ -11,11 +11,6 @@ function reviveDates(obj: any) {
   }
 }
 
-// 🚀 UPGRADED: Generates a pure Integer (Number) instead of a String to satisfy the strict Database rules
-function generateRandomIntId() {
-  return Math.floor(10000000 + Math.random() * 90000000); 
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -33,7 +28,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages } = backupData.data;
+    const { clients, loans, installments, payments, ledgers, expenses, capitalTx, messages, applications } = backupData.data;
+
+    // Destroy Collection Notes
+    if ((prisma as any).collectionNote) {
+      await (prisma as any).collectionNote.deleteMany({ 
+        where: { installment: { loan: { portfolio: targetPortfolio } } } 
+      }).catch(()=>{});
+    }
 
     // TACTICAL WIPE
     if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: targetPortfolio } } }).catch(()=>{});
@@ -46,7 +48,23 @@ export async function POST(request: Request) {
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
 
-    // RECONSTRUCTION
+    // 🚀 1. RECONSTRUCT APPLICATIONS FIRST
+    const appMap = new Map();
+    if ((prisma as any).application) {
+       for (const app of (applications || [])) {
+         const oldId = app.id;
+         delete app.id;
+         if (app.portfolio) app.portfolio = targetPortfolio; 
+         reviveDates(app);
+         
+         try {
+           const newApp = await (prisma as any).application.create({ data: app });
+           appMap.set(oldId, newApp.id);
+         } catch (e) { console.error("App restore skipped", e); }
+       }
+    }
+
+    // 🚀 2. RECONSTRUCT CLIENTS (And attach the newly generated Application IDs!)
     const clientMap = new Map();
     for (const c of (clients || [])) {
       const oldId = c.id;
@@ -54,22 +72,26 @@ export async function POST(request: Request) {
       c.portfolio = targetPortfolio; 
       reviveDates(c);
       
-      // 🛡️ BYPASS UNIQUE CONSTRAINTS: Safe Phone string and Pure Integer IDs
       if (c.phone) c.phone = c.phone + ` (P-${targetPortfolio.substring(0,3)})`;
-      if (c.applicationId) c.applicationId = generateRandomIntId();
-      if (c.agentId) c.agentId = generateRandomIntId();
+      
+      // LINK THE CORRECT APPLICATION
+      if (c.applicationId && appMap.has(c.applicationId)) {
+          c.applicationId = appMap.get(c.applicationId);
+      } else {
+          c.applicationId = null; // Only null it if the application backup truly failed/didn't exist
+      }
 
       if (prisma.client) {
         try {
           const newC = await prisma.client.create({ data: c });
           clientMap.set(oldId, newC.id);
         } catch (err: any) {
-          console.error("Client Matrix Error:", err);
           return NextResponse.json({ error: `Client Matrix Error (${c.firstName}): ${err.message}` }, { status: 500 });
         }
       }
     }
 
+    // 🚀 3. RESTORE EVERYTHING ELSE
     const loanMap = new Map();
     for (const l of (loans || [])) {
       const oldId = l.id;
@@ -106,15 +128,6 @@ export async function POST(request: Request) {
       }
     }
 
-    if (prisma.clientMessage) {
-      for (const m of (messages || [])) {
-        delete m.id;
-        m.clientId = clientMap.get(m.clientId);
-        reviveDates(m);
-        if (m.clientId) await prisma.clientMessage.create({ data: m }).catch(()=>{});
-      }
-    }
-
     if (prisma.ledger) {
       for (const l of (ledgers || [])) {
         delete l.id;
@@ -122,22 +135,6 @@ export async function POST(request: Request) {
         if (l.loanId) l.loanId = loanMap.get(l.loanId);
         reviveDates(l);
         await prisma.ledger.create({ data: l }).catch(()=>{});
-      }
-    }
-
-    if (prisma.expense) {
-      for (const e of (expenses || [])) {
-        delete e.id;
-        e.portfolio = targetPortfolio; 
-        await prisma.expense.create({ data: e }).catch(()=>{});
-      }
-    }
-
-    if (prisma.capitalTransaction) {
-      for (const c of (capitalTx || [])) {
-        delete c.id;
-        c.portfolio = targetPortfolio; 
-        await prisma.capitalTransaction.create({ data: c }).catch(()=>{});
       }
     }
 
