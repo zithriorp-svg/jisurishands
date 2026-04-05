@@ -42,7 +42,7 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
   };
 
   const handleDeletePortfolio = async () => {
-    if (selectedPortfolio === "Main Portfolio") { alert("SECURITY OVERRIDE: You cannot delete the Main Portfolio."); return; }
+    // ☢️ NUCLEAR SAFETY LOCK REMOVED: No more blocks for Main Portfolio!
     const confirm1 = confirm(`WARNING: You are about to permanently delete "${selectedPortfolio}".\n\nThis will erase ALL data inside it. Proceed?`);
     if (!confirm1) return;
     const confirm2 = confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Are you absolutely sure?`);
@@ -61,51 +61,62 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
     setMessage(`📥 Downloading ${format.toUpperCase()} Backup for "${selectedPortfolio}"...`);
   };
 
-  // 🚀 UPGRADED: Forgiving JSON Parser
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const confirm1 = confirm(`WARNING: You are about to OVERWRITE "${selectedPortfolio}" with this backup file.\n\nAll current data in this portfolio will be WIPED OUT and replaced with the uploaded data.\n\nProceed?`);
-    if (!confirm1) {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
     setRestoreLoading(true);
-    setMessage("Uploading and rebuilding data matrix...");
+    setMessage("Reading backup file...");
 
     try {
       const text = await file.text();
-      
-      // We safely parse the JSON, ensuring we catch any hidden structural errors.
       let backupData;
+      
       try {
          backupData = JSON.parse(text);
       } catch (parseError) {
-         console.error("JSON Parsing Error:", parseError);
-         setMessage("Error: The file is corrupted or not a valid JSON. Please download a fresh backup.");
+         setMessage("Error: The uploaded file is corrupted or not a valid JSON.");
          setRestoreLoading(false);
          if (fileInputRef.current) fileInputRef.current.value = '';
          return;
       }
 
+      const originalName = backupData.portfolio || "Restored";
+      const suggestedName = `${originalName} (Backup ${new Date().toLocaleDateString().replace(/\//g, '-')})`;
+      
+      const newPortfolioName = window.prompt(
+        "CREATE NEW PORTFOLIO FROM BACKUP\n\nEnter a name for the new portfolio. Your existing data will NOT be touched:", 
+        suggestedName
+      );
+
+      if (!newPortfolioName) {
+        setMessage("Restore cancelled.");
+        setRestoreLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      setMessage(`Building new portfolio: "${newPortfolioName}"...`);
+
       const res = await fetch('/api/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetPortfolio: selectedPortfolio, backupData })
+        body: JSON.stringify({ targetPortfolio: newPortfolioName.trim(), backupData })
       });
 
       const data = await res.json();
-      if (data.success) {
-        setMessage(`✅ Backup successfully restored to "${selectedPortfolio}"! Rebooting...`);
-        setTimeout(() => window.location.reload(), 1500);
-      } else {
-        setMessage(`Matrix Error: ${data.error}`);
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Unknown Server Error");
       }
+
+      await switchPortfolioAction(newPortfolioName.trim());
+      setMessage(`✅ Success! Switched to new portfolio "${newPortfolioName.trim()}"! Rebooting...`);
+      setTimeout(() => window.location.reload(), 1500);
+      
     } catch (err: any) {
        console.error("Network/Upload Error:", err);
-       setMessage(`Upload Error: ${err.message}`);
+       setMessage(`Matrix Error: ${err.message}`);
     }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -164,14 +175,14 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
           </div>
           
           <button onClick={() => fileInputRef.current?.click()} disabled={restoreLoading} className="w-full bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/50 text-blue-400 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50 mt-2">
-            {restoreLoading ? "⏳ Restoring..." : "📤 Upload JSON to Restore"}
+            {restoreLoading ? "⏳ Reading..." : "📤 Upload JSON to New Portfolio"}
           </button>
           
-          {/* Hidden File Input */}
           <input type="file" accept=".json" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
 
           <div className="pt-4 border-t border-zinc-800 mt-4">
-            <button onClick={handleDeletePortfolio} disabled={deleteLoading || selectedPortfolio === "Main Portfolio"} className="w-full bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-400 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50 mt-2">
+            {/* ☢️ THE LOCK IS GONE: The 'disabled' prop ONLY checks if it's currently loading, no more Main Portfolio check! */}
+            <button onClick={handleDeletePortfolio} disabled={deleteLoading} className="w-full bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/50 text-rose-400 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50 mt-2">
               {deleteLoading ? "Destroying..." : "🗑️ Delete Portfolio"}
             </button>
           </div>
@@ -192,7 +203,7 @@ export default function SettingsClient({ activePortfolio, portfolioList }: Setti
       </div>
 
       {message && (
-        <div className={`p-4 rounded-xl text-sm font-bold ${message.includes("✅") ? "bg-emerald-500/20 text-emerald-400" : message.includes("💥") || message.includes("Error") ? "bg-rose-500/20 text-rose-400" : "bg-zinc-800 text-white"}`}>
+        <div className={`p-4 rounded-xl text-sm font-bold ${message.includes("✅") ? "bg-emerald-500/20 text-emerald-400" : message.includes("💥") || message.includes("Error") || message.includes("cancelled") ? "bg-rose-500/20 text-rose-400" : "bg-zinc-800 text-white"}`}>
           {message}
         </div>
       )}
