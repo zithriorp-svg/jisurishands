@@ -11,7 +11,7 @@ async function setActivePortfolioCookie(name: string): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(PORTFOLIO_COOKIE, name, {
     path: "/",
-    maxAge: 60 * 60 * 24 * 365, // 1 year
+    maxAge: 60 * 60 * 24 * 365,
     httpOnly: true,
     sameSite: "lax",
   });
@@ -69,14 +69,9 @@ export async function ensureDefaultPortfolio(): Promise<void> {
   }
 }
 
-// 🛡️ ARMORED: Delete Portfolio Protocol
+// ☢️ SAFETY LOCK REMOVED: You can now delete ANY portfolio.
 export async function deletePortfolioAction(portfolioName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    if (portfolioName === DEFAULT_PORTFOLIO) {
-      return { success: false, error: "Cannot delete the Main Portfolio. This is protected." };
-    }
-
-    // 1. Delete all related records first (Safely checking if the table exists to prevent crashes)
     if (prisma.payment) await prisma.payment.deleteMany({ where: { loan: { portfolio: portfolioName } } }).catch(()=>{});
     if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: portfolioName } } }).catch(()=>{});
     if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
@@ -89,10 +84,8 @@ export async function deletePortfolioAction(portfolioName: string): Promise<{ su
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
     if (prisma.capitalTransaction) await prisma.capitalTransaction.deleteMany({ where: { portfolio: portfolioName } }).catch(()=>{});
 
-    // 2. Delete the portfolio itself
     if (prisma.systemPortfolio) await prisma.systemPortfolio.delete({ where: { name: portfolioName } }).catch(()=>{});
 
-    // 3. Force switch back to Default Portfolio
     await setActivePortfolioCookie(DEFAULT_PORTFOLIO);
     revalidatePath("/", "layout");
 
