@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import DirectLoanCalculator from "@/components/DirectLoanCalculator";
 import CollectionLog from "@/components/CollectionLog";
 import { sendFBNotification, generateOverdueNotice, generatePaymentReminder } from "@/utils/notifications";
-import { sendChatMessage } from "./actions";
+import { sendChatMessage, deleteClientRecord } from "./actions";
 
 const formatCurrency = (value: number | string | undefined | null): string => {
   if (value === undefined || value === null || isNaN(Number(value))) return "₱0.00";
@@ -201,9 +201,29 @@ type TabType = 'dossier' | 'loans' | 'transactions' | 'chat' | 'new-loan';
 export default function ClientProfileClient({ client }: { client: ClientData }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>('dossier');
+  const [isDeleting, setIsDeleting] = useState(false);
   const hasKYC = !!client.kycData;
 
   const handleDisburseComplete = () => { router.refresh(); setActiveTab('loans'); };
+
+  // 💥 ERADICATION PROTOCOL (The trigger button logic)
+  const handleDeleteClient = async () => {
+    const confirm1 = confirm(`WARNING: You are about to permanently eradicate the profile of ${client.firstName} ${client.lastName}.\n\nThis will wipe ALL their loans, payments, chat history, and KYC data. Proceed?`);
+    if (!confirm1) return;
+    
+    const confirm2 = confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Are you absolutely sure?`);
+    if (!confirm2) return;
+
+    setIsDeleting(true);
+    const res = await deleteClientRecord(client.id);
+    
+    if (res.success) {
+      router.push("/clients");
+    } else {
+      alert(`Eradication Failed: ${res.error}`);
+      setIsDeleting(false);
+    }
+  };
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'dossier', label: '📋 KYC Dossier' }, { id: 'loans', label: '💰 Loans' }, { id: 'transactions', label: '📄 Transactions' },
@@ -213,11 +233,27 @@ export default function ClientProfileClient({ client }: { client: ClientData }) 
   return (
     <div className="max-w-5xl mx-auto p-4 space-y-6 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-4">
-        <div><h1 className="text-2xl font-bold text-white">{client.firstName} {client.lastName}</h1><p className="text-zinc-500 text-sm">Client Master Dossier • ID: {client.id}</p></div>
+        <div>
+          <h1 className="text-2xl font-bold text-white">{client.firstName} {client.lastName}</h1>
+          <p className="text-zinc-500 text-sm">Client Master Dossier • ID: {client.id}</p>
+        </div>
+        
         <div className="flex items-center gap-3 flex-wrap">
           <RiskBadge client={client} />
-          <Link href={`/clients/${client.id}/receipt`} target="_blank" className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-2 rounded text-sm border border-zinc-600 transition-colors">📄 View Original Application Receipt</Link>
-          <Link href="/" className="text-sm text-blue-400 hover:underline">← Dashboard</Link>
+          <Link href={`/clients/${client.id}/receipt`} target="_blank" className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-2 rounded text-sm border border-zinc-600 transition-colors">
+            📄 Original Application
+          </Link>
+
+          {/* 💥 ERADICATION BUTTON IS RIGHT HERE! */}
+          <button 
+            onClick={handleDeleteClient} 
+            disabled={isDeleting}
+            className="flex items-center gap-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 px-3 py-2 rounded text-sm border border-rose-500/30 transition-colors font-bold disabled:opacity-50"
+          >
+            {isDeleting ? "⏳ Eradicating..." : "🗑️ Delete Client"}
+          </button>
+
+          <Link href="/clients" className="text-sm text-blue-400 hover:underline">← Clients</Link>
         </div>
       </div>
 
@@ -319,7 +355,7 @@ export default function ClientProfileClient({ client }: { client: ClientData }) 
                   
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div className="bg-zinc-900 rounded-lg p-3 text-center"><p className="text-xs text-zinc-500">Principal</p><p className="text-sm font-bold text-white">{formatCurrency(loan.principal)}</p></div>
-                    <div className="bg-zinc-900 rounded-lg p-3 text-center"><p className="text-xs text-zinc-500">Rate</p><p className="text-sm font-bold text-white">10% <span className="text-emerald-400 text-xs">(Effective: 6% w/ Discount)</span></p></div>
+                    <div className="bg-zinc-900 rounded-lg p-3 text-center"><p className="text-xs text-zinc-500">Rate</p><p className="text-sm font-bold text-white">{loan.interestRate}%</p></div>
                     <div className="bg-zinc-900 rounded-lg p-3 text-center"><p className="text-xs text-zinc-500">Total</p><p className="text-sm font-bold text-white">{formatCurrency(loan.totalRepayment)}</p></div>
                     <div className="bg-zinc-900 rounded-lg p-3 text-center"><p className="text-xs text-zinc-500">Paid</p><p className="text-sm font-bold text-emerald-400">{formatCurrency(loan.totalPaid)}</p></div>
                     <div className={`rounded-lg p-3 text-center border ${loan.netLoanProfit >= 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
