@@ -11,9 +11,9 @@ function reviveDates(obj: any) {
   }
 }
 
-// 🚀 NEW: Tool to generate fake, unique IDs for duplicated clients
-function generateRandomId() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+// 🚀 UPGRADED: Generates a pure Integer (Number) instead of a String to satisfy the strict Database rules
+function generateRandomIntId() {
+  return Math.floor(10000000 + Math.random() * 90000000); 
 }
 
 export async function POST(request: Request) {
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loan: { portfolio: targetPortfolio } } }).catch(()=>{});
     if (prisma.loan) await prisma.loan.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.clientMessage) await prisma.clientMessage.deleteMany({ where: { client: { portfolio: targetPortfolio } } }).catch(()=>{});
+    if ((prisma as any).message) await (prisma as any).message.deleteMany({ where: { client: { portfolio: targetPortfolio } } }).catch(()=>{});
     if (prisma.client) await prisma.client.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.ledger) await prisma.ledger.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
     if (prisma.expense) await prisma.expense.deleteMany({ where: { portfolio: targetPortfolio } }).catch(()=>{});
@@ -53,16 +54,17 @@ export async function POST(request: Request) {
       c.portfolio = targetPortfolio; 
       reviveDates(c);
       
-      // 🛡️ BYPASS UNIQUE CONSTRAINTS: Give the copied client a new phone, new application ID, and new agent ID!
-      if (c.phone) c.phone = c.phone + ` (Port-${targetPortfolio.substring(0,3)})`;
-      if (c.applicationId) c.applicationId = `RESTORE-${generateRandomId()}`;
-      if (c.agentId) c.agentId = `RESTORE-${generateRandomId()}`;
+      // 🛡️ BYPASS UNIQUE CONSTRAINTS: Safe Phone string and Pure Integer IDs
+      if (c.phone) c.phone = c.phone + ` (P-${targetPortfolio.substring(0,3)})`;
+      if (c.applicationId) c.applicationId = generateRandomIntId();
+      if (c.agentId) c.agentId = generateRandomIntId();
 
       if (prisma.client) {
         try {
           const newC = await prisma.client.create({ data: c });
           clientMap.set(oldId, newC.id);
         } catch (err: any) {
+          console.error("Client Matrix Error:", err);
           return NextResponse.json({ error: `Client Matrix Error (${c.firstName}): ${err.message}` }, { status: 500 });
         }
       }
