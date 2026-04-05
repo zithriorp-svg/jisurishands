@@ -193,3 +193,60 @@ export async function sendChatMessage(clientId: number, text: string) {
     return { error: "Failed to send message." };
   }
 }
+
+// ==========================================
+// 💥 CLIENT ERADICATION PROTOCOL
+// ==========================================
+export async function deleteClientRecord(clientId: number) {
+  try {
+    const portfolio = await getActivePortfolio();
+
+    // Verify the client exists and belongs to this portfolio
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, portfolio },
+      include: { loans: true }
+    });
+
+    if (!client) {
+      return { error: "Client not found or unauthorized." };
+    }
+
+    const loanIds = client.loans.map(l => l.id);
+
+    // 1. TACTICAL WIPE: Destroy child records first so the DB doesn't crash
+    if (loanIds.length > 0) {
+      if ((prisma as any).collectionNote) {
+        await (prisma as any).collectionNote.deleteMany({
+          where: { installment: { loanId: { in: loanIds } } }
+        }).catch(()=>{});
+      }
+      if (prisma.loanInstallment) await prisma.loanInstallment.deleteMany({ where: { loanId: { in: loanIds } } }).catch(()=>{});
+      if (prisma.payment) await prisma.payment.deleteMany({ where: { loanId: { in: loanIds } } }).catch(()=>{});
+      if (prisma.ledger) await prisma.ledger.deleteMany({ where: { loanId: { in: loanIds } } }).catch(()=>{});
+      
+      // 2. Destroy Loans
+      if (prisma.loan) await prisma.loan.deleteMany({ where: { clientId } }).catch(()=>{});
+    }
+
+    // 3. Destroy Messages & Chat History
+    if (prisma.clientMessage) await prisma.clientMessage.deleteMany({ where: { clientId } }).catch(()=>{});
+    if ((prisma as any).message) await (prisma as any).message.deleteMany({ where: { clientId } }).catch(()=>{});
+
+    // 4. Destroy Application (If linked)
+    if (client.applicationId && prisma.application) {
+      await prisma.application.delete({ where: { id: client.applicationId } }).catch(()=>{});
+    }
+
+    // 5. Vaporize the Client Profile
+    await prisma.client.delete({ where: { id: clientId } });
+
+    // Refresh UI
+    revalidatePath("/clients");
+    revalidatePath("/");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("ERADICATION ERROR:", error);
+    return { error: error.message || "Failed to delete client record." };
+  }
+}
