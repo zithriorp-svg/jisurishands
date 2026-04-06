@@ -7,22 +7,32 @@ import rehypeRaw from 'rehype-raw';
 export default function MatrixCopilot() {
   const [isOpen, setIsOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null); // 🚀 NEW: Tracks which message was copied
   
-  // 🚀 DEFAULT BRAIN SETTINGS (You can change this in the UI text box)
-  const defaultPrompt = `You are the Omniscient AI Core of the FinTech Vault.
+  // 🚀 DEFAULT BRAIN SETTINGS
+  const defaultPrompt = `You are the Vault AI Core—the hyper-proactive, assertive intelligence operating a premier Micro-Lending Institution in the Philippines.
 
-YOUR ROLES:
-- Chief Financial Strategist: Analyze live data to maximize profit and minimize risk.
-- Cognitive Investigator: Identify deceit and drive for a 0% default rate.
+USER RECOGNITION & TUTOR MODE:
+You report directly to the COMMANDER. The Commander relies entirely on you to execute all coding, system architecture, and business strategies.
+CRITICAL: The Commander has zero technical knowledge and uses a strict "Copy and Paste" workflow. You are their patient TUTOR, but an AGGRESSIVE, ASSERTIVE business partner. Explain all concepts using simple, everyday layman's terms (analogies are great). Do not use jargon without explaining it simply. Always provide exact, copy-paste-ready code.
 
-BUSINESS RULES (Adjust as needed):
-1. Base Interest: 10% flat interest rate.
-2. Good Payer Discount: 4% discount (making effective rate 6%) if paid perfectly on time.
-3. Rollover: Costs 6% of original principal.
-4. Agent Commissions: Agents receive 40% of collected interest.
+PROACTIVE INITIATIVE (DO NOT WAIT FOR QUESTIONS):
+Because the Commander focuses on high-level vision and may not know what to ask, YOU MUST TAKE THE LEAD. Whenever the Commander initiates a chat or asks a vague question, immediately provide a comprehensive status report. Be highly informative and suggestive. Tell the Commander what is wrong, what is going well, and EXACTLY what action they should take next.
+
+YOUR VIRTUAL DEPARTMENTS (Report on these automatically):
+1. IT & Engineering (CTO): Check system health. Tell the Commander what code needs upgrading.
+2. Executive (CEO/CFO): Report on overall profitability, cash flow, and vault liquidity.
+3. Credit & Risk: Aggressively call out bad loans, overdue installments, and default risks.
+4. Field Command: Report on the field agents (the "Heart" of the business) and their collection progress.
+
+FINANCIAL & BUSINESS RULES (DYNAMIC):
+Rates are NOT FIXED. The system is unlocked. Look at the specific live data for interest rates, effective rates, rollover fees, and agent commissions. Do not assume old defaults. Always base projections on LIVE numbers.
 
 RESPONSE STYLE:
-Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
+- Address the user as "Commander".
+- Be aggressive in your reporting, suggestive in your strategies, and patient in your technical tutoring.
+- Provide raw, exact copy-paste payloads for any code changes.
+- Use Markdown Mermaid syntax (\`\`\`mermaid ... \`\`\`) for charts to visualize data when helpful.`;
 
   const [customBrain, setCustomBrain] = useState(defaultPrompt);
 
@@ -34,7 +44,6 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
   const [hasError, setHasError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load saved brain from local storage on boot
   useEffect(() => {
     const savedBrain = localStorage.getItem("vault_ai_brain");
     if (savedBrain) setCustomBrain(savedBrain);
@@ -47,6 +56,13 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
   const saveBrain = (text: string) => {
     setCustomBrain(text);
     localStorage.setItem("vault_ai_brain", text);
+  };
+
+  // 🚀 NEW: The One-Tap Copy Execution
+  const handleCopy = (text: string, idx: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(idx);
+    setTimeout(() => setCopiedIndex(null), 2000); // Resets back to "COPY" after 2 seconds
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,7 +79,6 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 🚀 SENDING THE CUSTOM BRAIN TO THE BACKEND
         body: JSON.stringify({ message: userMessage, customPrompt: customBrain })
       });
 
@@ -100,7 +115,6 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
   return (
     <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl shadow-[0_0_30px_rgba(0,223,130,0.1)] overflow-hidden transition-all duration-300">
       
-      {/* Header Bar */}
       <div className="w-full flex justify-between items-center p-4 bg-gradient-to-r from-emerald-950 to-teal-950 border-b border-emerald-900/50">
         <button onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-3 cursor-pointer flex-1 text-left">
           <span className="text-2xl animate-pulse">🧠</span>
@@ -130,11 +144,9 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
         </div>
       </div>
 
-      {/* Interface */}
       {isOpen && (
         <div className="flex flex-col h-[450px]">
           
-          {/* 🚀 BRAIN SETTINGS PANEL */}
           {showSettings && (
             <div className="p-4 bg-black border-b border-emerald-900/50 flex flex-col gap-2 shadow-inner">
               <div className="flex justify-between items-center">
@@ -153,13 +165,26 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
             </div>
           )}
 
-          {/* Chat History */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${msg.role === 'user' ? 'text-emerald-500' : 'text-blue-400'}`}>
-                  {msg.role === 'user' ? 'COMMANDER' : 'VAULT AI CORE'}
-                </span>
+                
+                {/* 🚀 UPGRADED HEADER WITH ONE-TAP COPY BUTTON */}
+                <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'justify-end w-full' : 'justify-start w-full'}`}>
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${msg.role === 'user' ? 'text-emerald-500' : 'text-blue-400'}`}>
+                    {msg.role === 'user' ? 'COMMANDER' : 'VAULT AI CORE'}
+                  </span>
+                  {msg.role === 'ai' && (
+                    <button 
+                      onClick={() => handleCopy(msg.content, idx)}
+                      className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 text-[9px] font-black px-2 py-0.5 rounded border border-blue-500/30 transition-colors uppercase tracking-widest cursor-pointer"
+                      title="Copy full message"
+                    >
+                      {copiedIndex === idx ? "✓ COPIED" : "📋 COPY"}
+                    </button>
+                  )}
+                </div>
+
                 <div className={`max-w-[90%] p-3 rounded-2xl text-sm ${
                   msg.role === 'user' 
                     ? 'bg-emerald-900/40 border border-emerald-500/30 text-emerald-100 rounded-tr-none' 
@@ -183,7 +208,6 @@ Be sharp, strategic, and concise. Use actionable bullet points. No fluff.`;
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Box */}
           <form onSubmit={handleSubmit} className="p-3 bg-zinc-900 border-t border-zinc-800 flex gap-2 z-10">
             <input 
               type="text" 
