@@ -205,13 +205,48 @@ export default function AgentApplicationForm() {
             </div>
           </div>
 
+          {/* 🚀 4. TAGALOG AGREEMENT INJECTION */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800">
+              <h2 className="text-sm font-black text-amber-400 uppercase tracking-widest">4. Mga Tungkulin at Responsibilidad</h2>
+            </div>
+            <div className="p-6 space-y-4 text-sm text-slate-300 leading-relaxed">
+              <p className="font-bold text-white uppercase border-b border-slate-700 pb-2 mb-2">Bilang Field Agent at Co-Maker, sumasang-ayon ako sa sumusunod:</p>
+              
+              <div className="space-y-2">
+                <h3 className="font-bold text-emerald-400 uppercase">✅ Mga Benepisyo (Pros)</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Makakatanggap ako ng <strong>40% komisyon</strong> mula sa purong interes ng mga pautang na matagumpay kong nakolekta.</li>
+                  <li>Walang limitasyon sa maaaring kitain basta't maayos ang paniningil at walang nade-default.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-2 mt-4">
+                <h3 className="font-bold text-blue-400 uppercase">🛠️ Mga Tungkulin (Responsibilities)</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Ako mismo ang magsasala (screen), mag-aapruba, at maniniguro na ang aking mga kliyente ay may kakayahang magbayad.</li>
+                  <li>Ako ang personal na maniningil at magre-remit ng mga bayad sa itinakdang oras.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-2 mt-4 bg-rose-950/30 border border-rose-500/30 p-4 rounded-xl">
+                <h3 className="font-bold text-rose-400 uppercase">⚠️ Mga Panganib at Pananagutan (Cons & Liabilities)</h3>
+                <ul className="list-disc pl-5 space-y-2 text-rose-200">
+                  <li><strong>AKO AY CO-MAKER:</strong> Kung hindi magbayad, magtago, o tumakbo ang aking kliyente, <strong>AKO</strong> bilang Co-Maker ang direktang magbabayad ng kanilang buong utang (Principal + Interest + Penalties).</li>
+                  <li><strong>PAGHATAK NG KOLATERAL:</strong> Kung hindi ko mabayaran ang utang ng aking mga nag-default na kliyente, kusang-loob kong isinusuko at binibigyan ng karapatan ang kumpanya na <strong>HATAKIN (Seize)</strong> ang idineklara kong kolateral sa itaas upang ipambayad sa utang nang walang idinadaang proseso sa korte.</li>
+                  <li>Ang hindi pag-remit ng nakolektang pera mula sa kliyente ay agarang sasampahan ng kasong kriminal (Estafa/Theft).</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {/* 5. BINDING SIGNATURE */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800"><h2 className="text-sm font-black text-rose-400 uppercase tracking-widest">4. Binding Signature</h2></div>
+            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800"><h2 className="text-sm font-black text-rose-400 uppercase tracking-widest">5. Binding Signature</h2></div>
             <div className="p-6 space-y-6">
               <label className="flex items-start gap-4 p-3 bg-slate-950 rounded-xl border border-slate-800 cursor-pointer">
                 <input required type="checkbox" className="w-5 h-5 mt-0.5 accent-rose-500 rounded" />
-                <span className="text-xs md:text-sm text-slate-300 font-medium">I swear all info is true and I assume all liability as Co-Maker.</span>
+                <span className="text-xs md:text-sm text-rose-300 font-bold uppercase">Naiintindihan ko ang aking mga Tungkulin at Panganib, at sumasang-ayon ako sa lahat ng nakasaad sa itaas.</span>
               </label>
               <div className="pt-6 border-t border-slate-800">
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Digital Signature (Draw Below)</label>
@@ -233,3 +268,4 @@ export default function AgentApplicationForm() {
     </div>
   );
 }
+
