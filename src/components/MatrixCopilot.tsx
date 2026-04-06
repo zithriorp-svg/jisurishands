@@ -7,9 +7,8 @@ import rehypeRaw from 'rehype-raw';
 export default function MatrixCopilot() {
   const [isOpen, setIsOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null); // 🚀 NEW: Tracks which message was copied
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
-  // 🚀 DEFAULT BRAIN SETTINGS
   const defaultPrompt = `You are the Vault AI Core—the hyper-proactive, assertive intelligence operating a premier Micro-Lending Institution in the Philippines.
 
 USER RECOGNITION & TUTOR MODE:
@@ -17,13 +16,16 @@ You report directly to the COMMANDER. The Commander relies entirely on you to ex
 CRITICAL: The Commander has zero technical knowledge and uses a strict "Copy and Paste" workflow. You are their patient TUTOR, but an AGGRESSIVE, ASSERTIVE business partner. Explain all concepts using simple, everyday layman's terms (analogies are great). Do not use jargon without explaining it simply. Always provide exact, copy-paste-ready code.
 
 PROACTIVE INITIATIVE (DO NOT WAIT FOR QUESTIONS):
-Because the Commander focuses on high-level vision and may not know what to ask, YOU MUST TAKE THE LEAD. Whenever the Commander initiates a chat or asks a vague question, immediately provide a comprehensive status report. Be highly informative and suggestive. Tell the Commander what is wrong, what is going well, and EXACTLY what action they should take next.
+Because the Commander focuses on high-level vision and may not know what to ask, YOU MUST TAKE THE LEAD. Whenever the Commander initiates a chat or asks a vague question, immediately provide a comprehensive status report using the following headers exactly (use ### for headers):
 
-YOUR VIRTUAL DEPARTMENTS (Report on these automatically):
-1. IT & Engineering (CTO): Check system health. Tell the Commander what code needs upgrading.
-2. Executive (CEO/CFO): Report on overall profitability, cash flow, and vault liquidity.
-3. Credit & Risk: Aggressively call out bad loans, overdue installments, and default risks.
-4. Field Command: Report on the field agents (the "Heart" of the business) and their collection progress.
+### GLOBAL STATUS
+### EXECUTIVE REPORT
+### CREDIT & RISK REPORT
+### IT & ENGINEERING REPORT
+### FIELD COMMAND REPORT
+### PROACTIVE INITIATIVE
+
+Tell the Commander what is wrong, what is going well, and EXACTLY what action they should take next.
 
 FINANCIAL & BUSINESS RULES (DYNAMIC):
 Rates are NOT FIXED. The system is unlocked. Look at the specific live data for interest rates, effective rates, rollover fees, and agent commissions. Do not assume old defaults. Always base projections on LIVE numbers.
@@ -32,7 +34,7 @@ RESPONSE STYLE:
 - Address the user as "Commander".
 - Be aggressive in your reporting, suggestive in your strategies, and patient in your technical tutoring.
 - Provide raw, exact copy-paste payloads for any code changes.
-- Use Markdown Mermaid syntax (\`\`\`mermaid ... \`\`\`) for charts to visualize data when helpful.`;
+- Use Markdown Mermaid syntax (\`\`\`mermaid ... \`\`\`) for charts.`;
 
   const [customBrain, setCustomBrain] = useState(defaultPrompt);
 
@@ -58,11 +60,10 @@ RESPONSE STYLE:
     localStorage.setItem("vault_ai_brain", text);
   };
 
-  // 🚀 NEW: The One-Tap Copy Execution
   const handleCopy = (text: string, idx: number) => {
     navigator.clipboard.writeText(text);
     setCopiedIndex(idx);
-    setTimeout(() => setCopiedIndex(null), 2000); // Resets back to "COPY" after 2 seconds
+    setTimeout(() => setCopiedIndex(null), 2000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,10 +97,11 @@ RESPONSE STYLE:
     }
   };
 
+  // 🚀 UPGRADE: Custom Color-Coded Markdown Interceptor
   const renderMessageContent = (content: string) => {
     if (content.includes('```mermaid')) {
        return (
-         <div className="bg-black border border-zinc-700 p-3 rounded-xl overflow-x-auto text-[10px] font-mono text-emerald-400 mt-2 mb-2">
+         <div className="bg-black border border-zinc-700 p-3 rounded-xl overflow-x-auto text-[10px] font-mono text-emerald-400 mt-2 mb-2 shadow-inner">
            <p className="text-zinc-500 mb-2">// MERMAID CHART DATA DETECTED //</p>
            <pre className="whitespace-pre-wrap">{content}</pre>
          </div>
@@ -107,7 +109,32 @@ RESPONSE STYLE:
     }
     return (
       <div className="prose prose-invert prose-sm max-w-none">
-        <ReactMarkdown rehypePlugins={[rehypeRaw]}>{content}</ReactMarkdown>
+        <ReactMarkdown 
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            h3: ({node, ...props}) => {
+              const text = String(props.children).toUpperCase();
+              let colorClass = "text-white"; 
+              let icon = "📋";
+              
+              if (text.includes("EXECUTIVE") || text.includes("CEO") || text.includes("CFO")) { colorClass = "text-amber-400"; icon = "💰"; }
+              else if (text.includes("CREDIT") || text.includes("RISK")) { colorClass = "text-rose-400"; icon = "⚠️"; }
+              else if (text.includes("IT") || text.includes("ENGINEERING") || text.includes("CTO")) { colorClass = "text-blue-400"; icon = "⚙️"; }
+              else if (text.includes("FIELD") || text.includes("AGENT")) { colorClass = "text-purple-400"; icon = "🏍️"; }
+              else if (text.includes("GLOBAL") || text.includes("STATUS")) { colorClass = "text-cyan-400"; icon = "🌍"; }
+              else if (text.includes("ACTION") || text.includes("INITIATIVE")) { colorClass = "text-emerald-400"; icon = "🚀"; }
+
+              return (
+                <h3 className={`font-black uppercase tracking-widest mt-6 mb-3 border-b border-zinc-700/50 pb-2 flex items-center gap-2 ${colorClass}`}>
+                  <span>{icon}</span> {props.children}
+                </h3>
+              );
+            },
+            strong: ({node, ...props}) => <strong className="text-emerald-300 font-bold" {...props} /> // Makes bold numbers pop!
+          }}
+        >
+          {content}
+        </ReactMarkdown>
       </div>
     );
   };
@@ -169,7 +196,6 @@ RESPONSE STYLE:
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 
-                {/* 🚀 UPGRADED HEADER WITH ONE-TAP COPY BUTTON */}
                 <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'justify-end w-full' : 'justify-start w-full'}`}>
                   <span className={`text-[9px] font-black uppercase tracking-widest ${msg.role === 'user' ? 'text-emerald-500' : 'text-blue-400'}`}>
                     {msg.role === 'user' ? 'COMMANDER' : 'VAULT AI CORE'}
