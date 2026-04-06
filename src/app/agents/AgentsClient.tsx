@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { deleteAgentRecord } from "./actions"; // 🚀 INJECTED ERADICATION PROTOCOL
+import { deleteAgentRecord } from "./actions"; 
 
 interface Agent {
   id: number;
@@ -69,21 +69,17 @@ export default function AgentsClient() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"ACTIVE" | "PENDING">("ACTIVE");
 
-  // Selected agent for dossier
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [dossier, setDossier] = useState<AgentDossier | null>(null);
   const [loadingDossier, setLoadingDossier] = useState(false);
-  const [deletingAgentId, setDeletingAgentId] = useState<number | null>(null); // 🚀 NEW DELETION STATE
+  const [deletingAgentId, setDeletingAgentId] = useState<number | null>(null); 
 
-  // Form state
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Payout state
   const [settlingAgentId, setSettlingAgentId] = useState<number | null>(null);
 
-  // Credentials state
   const [generatingCredentials, setGeneratingCredentials] = useState(false);
   const [togglingLock, setTogglingLock] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
@@ -257,7 +253,6 @@ export default function AgentsClient() {
     }
   };
 
-  // 💥 NEW: EXECUTE ERADICATION
   const handleDeleteAgent = async (agentId: number, agentName: string) => {
     if (!confirm(`WARNING: You are about to eradicate Agent ${agentName} from the fleet.\n\nThis will permanently delete their commission ledgers and remove them as Co-Maker from all associated loans.\n\nProceed?`)) return;
     if (!confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Execute Agent Eradication?`)) return;
@@ -285,7 +280,6 @@ export default function AgentsClient() {
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6 pb-20">
       
-      {/* Header */}
       <div className="flex justify-between items-center pt-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Agent Command Center</h1>
@@ -294,7 +288,6 @@ export default function AgentsClient() {
         <Link href="/" className="text-sm text-blue-400 hover:underline">← Dashboard</Link>
       </div>
 
-      {/* TWO TAB NAVIGATION */}
       <div className="flex gap-2 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
         <button onClick={() => setActiveTab("ACTIVE")} className={`flex-1 py-3 text-sm font-bold uppercase rounded-lg transition-all ${activeTab === "ACTIVE" ? "bg-amber-500 text-black" : "text-zinc-500 hover:text-zinc-300"}`}>
           Active Fleet ({data?.agents.length || 0})
@@ -304,9 +297,6 @@ export default function AgentsClient() {
         </button>
       </div>
 
-      {/* ========================================================= */}
-      {/* TAB 1: PENDING RECRUITS */}
-      {/* ========================================================= */}
       {activeTab === "PENDING" && (
         <div className="space-y-4">
           {pendingApps.length === 0 ? (
@@ -366,10 +356,6 @@ export default function AgentsClient() {
         </div>
       )}
 
-
-      {/* ========================================================= */}
-      {/* TAB 2: ACTIVE FLEET */}
-      {/* ========================================================= */}
       {activeTab === "ACTIVE" && (
         <>
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
@@ -450,8 +436,10 @@ export default function AgentsClient() {
                 </div>
 
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl relative">
+                  
+                  {/* 🚀 THE FIX IS RIGHT HERE: Pointing to the CORRECT new folder */}
                   <div className="absolute top-4 right-4">
-                     <Link href={`/agent-application/receipt?phone=${dossier.phone}`} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all border border-emerald-400/50">
+                     <Link href={`/agent-apply/receipt?phone=${dossier.phone}`} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all border border-emerald-400/50">
                        📄 View PDF Contract
                      </Link>
                   </div>
@@ -472,7 +460,6 @@ export default function AgentsClient() {
                     </div>
                   </div>
 
-                  {/* 💥 THE NEW ERADICATION BUTTON */}
                   <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-end">
                     <button 
                       onClick={() => handleDeleteAgent(dossier.id, dossier.name)} 
