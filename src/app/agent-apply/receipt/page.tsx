@@ -3,13 +3,13 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function AgentReceiptPage(props: { searchParams: Promise<{ phone?: string }> }) {
-  const searchParams = await props.searchParams;
-  const phone = searchParams?.phone;
+export default async function AgentReceiptPage(props: any) {
+  // 🚀 PROPS SHIELD: Prevents Next.js 14 vs 15 searchParams crashes
+  const params = await Promise.resolve(props.searchParams);
+  const phone = params?.phone;
 
   if (!phone) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: No phone number provided.</div>;
 
-  // 🚀 Fetch the latest application for this phone number
   const app = await prisma.agentApplication.findFirst({
     where: { phone: phone },
     orderBy: { createdAt: 'desc' }
@@ -17,9 +17,13 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
 
   if (!app) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: Application not found.</div>;
 
-  const currentDate = new Date(app.createdAt).toLocaleDateString('en-PH', { 
+  // 🚀 HYDRATION SHIELD: Force Asia/Manila timezone so Vercel (USA) and Phone (Japan) perfectly agree!
+  const currentDate = new Date(app.createdAt).toLocaleString('en-US', { 
+    timeZone: 'Asia/Manila',
     year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' 
   });
+  
+  const safeBirthDate = app.birthDate ? new Date(app.birthDate).toLocaleDateString('en-US', { timeZone: 'Asia/Manila' }) : '—';
 
   return (
     <div className="min-h-screen bg-[#09090b] p-8 print:bg-white print:p-0">
@@ -31,7 +35,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
           <p className="text-xs text-zinc-500">Applicant: {app.firstName} {app.lastName}</p>
         </div>
         <div className="flex gap-4">
-          <Link href="/" className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 transition-all">← Return Home</Link>
+          <Link href="/agents" className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 transition-all">← Return to Fleet</Link>
           <div dangerouslySetInnerHTML={{ __html: `<button onclick="window.print()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg transition-all">🖨️ Print / Save PDF</button>` }} />
         </div>
       </div>
@@ -43,7 +47,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
         
         <div className="border-b-2 border-black pb-4 mb-6 text-center">
           <h1 className="text-3xl font-bold uppercase tracking-wider">Field Agent Binding Contract</h1>
-          <p className="text-sm text-gray-600 font-bold mt-1">Division: <span className="text-black">{app.portfolio}</span> • Date: {currentDate}</p>
+          <p suppressHydrationWarning className="text-sm text-gray-600 font-bold mt-1">Division: <span className="text-black">{app.portfolio}</span> • Date: {currentDate}</p>
         </div>
 
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">1. Agent Identity</h2>
@@ -51,7 +55,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
           <div className="font-semibold text-gray-600">Full Name:</div><div className="font-bold">{app.firstName} {app.lastName}</div>
           <div className="font-semibold text-gray-600">Phone:</div><div className="font-bold">{app.phone || '—'}</div>
           <div className="font-semibold text-gray-600">Address:</div><div className="font-bold">{app.address || '—'}</div>
-          <div className="font-semibold text-gray-600">Birth Date:</div><div className="font-bold">{app.birthDate || '—'}</div>
+          <div className="font-semibold text-gray-600">Birth Date:</div><div suppressHydrationWarning className="font-bold">{safeBirthDate}</div>
         </div>
         
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">2. Territory & Capacity</h2>
@@ -115,4 +119,3 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
     </div>
   );
 }
-
