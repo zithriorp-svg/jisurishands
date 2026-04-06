@@ -127,13 +127,23 @@ export default function AgentApplyClient({ defaultPortfolio }: { defaultPortfoli
             <div className="col-span-2">{formData.collateralCondition || '—'}</div>
           </div>
 
-          {/* 🚀 FIXED: Inverting the white ink to black so it prints natively on white paper without relying on background colors! */}
+          {/* 🚀 PRINTABLE TAGALOG AGREEMENT */}
+          <h2 className="font-bold text-lg border-b border-black pb-1 mb-2 uppercase mt-6 text-rose-900">Mga Tungkulin at Pananagutan (Agent Agreement)</h2>
+          <div className="text-sm mb-4 pl-2 text-gray-800 space-y-1">
+            <p><strong>✅ BENEPISYO:</strong> 40% komisyon mula sa purong interes.</p>
+            <p><strong>🛠️ TUNGKULIN:</strong> Personal na magsasala ng kliyente at maniningil ng bayad.</p>
+            <p className="text-rose-800 font-bold border border-rose-300 bg-rose-50 p-2 mt-1 rounded">
+              ⚠️ PANANAGUTAN: Kung hindi magbayad ang kliyente, ang Agent (bilang Co-Maker) ang magbabayad ng utang. Kusang-loob na binibigyan ng karapatan ang kumpanya na hatakin (seize) ang kolateral sa itaas nang walang abiso sa korte.
+            </p>
+          </div>
+
           {formData.digitalSignature && (
             <div className="mt-4 pt-2 border-t border-black print:break-inside-avoid">
               <h2 className="font-bold text-lg mb-2 uppercase">Digital Signature</h2>
               <div className="border border-gray-400 p-2 inline-block">
                 <img src={formData.digitalSignature} alt="Digital Signature" style={{ maxHeight: '80px', filter: 'invert(1) contrast(200%)' }} />
               </div>
+              <p className="text-xs text-gray-500 font-bold uppercase mt-1">Signatory / Co-Maker: {formData.firstName} {formData.lastName}</p>
             </div>
           )}
 
@@ -164,7 +174,7 @@ export default function AgentApplyClient({ defaultPortfolio }: { defaultPortfoli
   }
 
   // ============================================================================
-  // MAIN FORM RENDER (Only visible if not submitted)
+  // MAIN FORM RENDER
   // ============================================================================
   return (
     <div className="min-h-screen bg-[#09090b] text-gray-300 p-4 font-sans pb-20 print:hidden">
@@ -271,17 +281,50 @@ export default function AgentApplyClient({ defaultPortfolio }: { defaultPortfoli
             </div>
           </div>
 
+          {/* 🚀 TAGALOG BINDING AGREEMENT */}
           <div>
-            <h2 className="text-red-400 font-bold text-lg mb-3 uppercase tracking-wider">5. Binding Agreement & Signature</h2>
-            <div className={`${borderStyle} p-4 space-y-4`}>
+            <h2 className="text-rose-400 font-bold text-lg mb-3 uppercase tracking-wider">5. Mga Tungkulin at Responsibilidad (Agreement)</h2>
+            <div className={`${borderStyle} p-5 space-y-4`}>
+              
+              <div className="text-sm text-slate-300 leading-relaxed mb-6 border-b border-zinc-800 pb-6">
+                <p className="font-bold text-white uppercase mb-4">Bilang Field Agent at Co-Maker, sumasang-ayon ako sa sumusunod:</p>
+                
+                <div className="space-y-2 mb-4">
+                  <h3 className="font-bold text-emerald-400 uppercase">✅ Mga Benepisyo (Pros)</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Makakatanggap ako ng <strong>40% komisyon</strong> mula sa purong interes ng mga pautang na matagumpay kong nakolekta.</li>
+                    <li>Walang limitasyon sa maaaring kitain basta't maayos ang paniningil at walang nade-default.</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <h3 className="font-bold text-blue-400 uppercase">🛠️ Mga Tungkulin (Responsibilities)</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Ako mismo ang magsasala (screen), mag-aapruba, at maniniguro na ang aking mga kliyente ay may kakayahang magbayad.</li>
+                    <li>Ako ang personal na maniningil at magre-remit ng mga bayad sa itinakdang oras.</li>
+                  </ul>
+                </div>
+
+                <div className="space-y-2 bg-rose-950/30 border border-rose-500/30 p-4 rounded-xl">
+                  <h3 className="font-bold text-rose-400 uppercase">⚠️ Mga Panganib at Pananagutan (Cons & Liabilities)</h3>
+                  <ul className="list-disc pl-5 space-y-2 text-rose-200">
+                    <li><strong>AKO AY CO-MAKER:</strong> Kung hindi magbayad, magtago, o tumakbo ang aking kliyente, <strong>AKO</strong> bilang Co-Maker ang direktang magbabayad ng kanilang buong utang (Principal + Interest + Penalties).</li>
+                    <li><strong>PAGHATAK NG KOLATERAL:</strong> Kung hindi ko mabayaran ang utang ng aking mga nag-default na kliyente, kusang-loob kong isinusuko at binibigyan ng karapatan ang kumpanya na <strong>HATAKIN (Seize)</strong> ang idineklara kong kolateral sa itaas upang ipambayad sa utang nang walang idinadaang proseso sa korte.</li>
+                    <li>Ang hindi pag-remit ng nakolektang pera mula sa kliyente ay agarang sasampahan ng kasong kriminal (Estafa/Theft).</li>
+                  </ul>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-zinc-400 text-xs mb-2 uppercase tracking-widest">Digital Signature (Sign Below)</label>
                 <SignaturePad onSignature={(dataUrl) => setFormData(prev => ({...prev, digitalSignature: dataUrl}))} />
               </div>
-              <div className="flex items-start gap-3 text-xs text-zinc-500">
-                <input type="checkbox" required className="w-5 h-5 accent-emerald-500 mt-0.5" />
+              
+              <div className="flex items-start gap-3 text-xs text-zinc-500 mt-4 bg-zinc-900/50 p-4 rounded-lg border border-zinc-800">
+                <input type="checkbox" required className="w-6 h-6 accent-emerald-500 mt-0.5 cursor-pointer" />
                 <span className="break-words leading-relaxed text-zinc-300">
-                  <strong className="text-white">I acknowledge that I am applying as a Co-Maker.</strong> If any client assigned to me defaults, I agree that the unpaid balance will be legally charged to me, and my pledged collateral listed above may be seized.
+                  <strong className="text-rose-400 uppercase block mb-1">Naiintindihan ko ang aking mga Tungkulin at Panganib.</strong>
+                  Sumasang-ayon ako sa lahat ng nakasaad sa itaas. Kung may kliyente akong mag-default, sumasang-ayon ako na ang utang ay ililipat sa pangalan ko at ang aking kolateral ay maaaring hatakin.
                 </span>
               </div>
             </div>
@@ -295,4 +338,3 @@ export default function AgentApplyClient({ defaultPortfolio }: { defaultPortfoli
     </div>
   );
 }
-
