@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { deleteAgentRecord } from "./actions"; // 🚀 INJECTED ERADICATION PROTOCOL
 
 interface Agent {
   id: number;
@@ -72,6 +73,7 @@ export default function AgentsClient() {
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [dossier, setDossier] = useState<AgentDossier | null>(null);
   const [loadingDossier, setLoadingDossier] = useState(false);
+  const [deletingAgentId, setDeletingAgentId] = useState<number | null>(null); // 🚀 NEW DELETION STATE
 
   // Form state
   const [newName, setNewName] = useState("");
@@ -255,6 +257,28 @@ export default function AgentsClient() {
     }
   };
 
+  // 💥 NEW: EXECUTE ERADICATION
+  const handleDeleteAgent = async (agentId: number, agentName: string) => {
+    if (!confirm(`WARNING: You are about to eradicate Agent ${agentName} from the fleet.\n\nThis will permanently delete their commission ledgers and remove them as Co-Maker from all associated loans.\n\nProceed?`)) return;
+    if (!confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Execute Agent Eradication?`)) return;
+
+    setDeletingAgentId(agentId);
+    try {
+      const res = await deleteAgentRecord(agentId);
+      if (res.success) {
+        setSelectedAgentId(null);
+        setDossier(null);
+        fetchData();
+      } else {
+        alert(`Eradication Failed: ${res.error}`);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setDeletingAgentId(null);
+    }
+  };
+
   if (loading) return <div className="max-w-4xl mx-auto p-4 flex items-center justify-center min-h-[60vh]"><div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div></div>;
   if (error) return <div className="max-w-4xl mx-auto p-4 flex items-center justify-center min-h-[60vh] text-red-400">{error}</div>;
 
@@ -281,7 +305,7 @@ export default function AgentsClient() {
       </div>
 
       {/* ========================================================= */}
-      {/* TAB 1: PENDING RECRUITS (UPGRADED SCHEMA MAPPING) */}
+      {/* TAB 1: PENDING RECRUITS */}
       {/* ========================================================= */}
       {activeTab === "PENDING" && (
         <div className="space-y-4">
@@ -299,7 +323,6 @@ export default function AgentsClient() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  {/* 🚀 REWIRED TO DISPLAY NEW DATABASE FIELDS */}
                   <div className="space-y-2 text-sm">
                     <p className="text-zinc-500 text-xs font-bold uppercase">Operational Capacity</p>
                     <p className="text-white"><span className="text-zinc-400">Employment:</span> {app.employment || 'N/A'}</p>
@@ -312,7 +335,6 @@ export default function AgentsClient() {
                   </div>
                 </div>
 
-                {/* Evidence Thumbnails (Updated to match new Column names) */}
                 <div className="flex gap-4 mb-6">
                    {app.idPhotoUrl && (
                      <div className="flex-1">
@@ -346,11 +368,10 @@ export default function AgentsClient() {
 
 
       {/* ========================================================= */}
-      {/* TAB 2: ACTIVE FLEET (YOUR ORIGINAL MASTER CONTROL PANEL) */}
+      {/* TAB 2: ACTIVE FLEET */}
       {/* ========================================================= */}
       {activeTab === "ACTIVE" && (
         <>
-          {/* SELECT AGENT Dropdown */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Select Agent for Master Dossier</h2>
             <select
@@ -367,7 +388,6 @@ export default function AgentsClient() {
             </select>
           </div>
 
-          {/* MASTER DOSSIER */}
           {selectedAgentId && (
             loadingDossier ? (
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
@@ -377,7 +397,6 @@ export default function AgentsClient() {
             ) : dossier ? (
               <div className="space-y-6">
                 
-                {/* Authentication & Access Control */}
                 <div className={`bg-zinc-900 border rounded-2xl p-6 shadow-xl ${dossier.isLocked ? 'border-rose-500/50' : 'border-zinc-800'}`}>
                   <h2 className="text-sm font-bold text-purple-400 uppercase tracking-wider mb-4">🔐 Authentication & Access Control</h2>
                   {dossier.isLocked && (
@@ -430,9 +449,7 @@ export default function AgentsClient() {
                   )}
                 </div>
 
-                {/* Agent Identity */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl relative">
-                  
                   <div className="absolute top-4 right-4">
                      <Link href={`/agent-application/receipt?phone=${dossier.phone}`} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all border border-emerald-400/50">
                        📄 View PDF Contract
@@ -454,9 +471,19 @@ export default function AgentsClient() {
                       <p className="text-lg font-bold text-white">{formatDate(dossier.createdAt)}</p>
                     </div>
                   </div>
+
+                  {/* 💥 THE NEW ERADICATION BUTTON */}
+                  <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-end">
+                    <button 
+                      onClick={() => handleDeleteAgent(dossier.id, dossier.name)} 
+                      disabled={deletingAgentId === dossier.id}
+                      className="bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      {deletingAgentId === dossier.id ? "⏳ Eradicating..." : "🗑️ Eradicate Agent"}
+                    </button>
+                  </div>
                 </div>
 
-                {/* 60/40 Commission Ledger */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
                   <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Card 2: 60/40 Commission Ledger</h2>
                   <div className="grid grid-cols-2 gap-4 mb-4">
@@ -476,7 +503,6 @@ export default function AgentsClient() {
                   </button>
                 </div>
 
-                {/* Co-Maker Liability */}
                 <div className="bg-zinc-900 border border-rose-500/30 rounded-2xl p-6 shadow-xl">
                   <h2 className="text-sm font-bold text-rose-400 uppercase tracking-wider mb-4">Card 3: Co-Maker Liability (CRITICAL)</h2>
                   <div className="bg-rose-500/10 rounded-xl p-4 mb-4">
@@ -500,8 +526,7 @@ export default function AgentsClient() {
             ) : null
           )}
 
-          {/* Register New Agent Form */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl mt-6">
             <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Register New Agent</h2>
             <form onSubmit={handleCreateAgent} className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
