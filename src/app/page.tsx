@@ -13,12 +13,19 @@ import AgentPortalClient from "@/app/agent-portal/AgentPortalClient";
 
 export const dynamic = "force-dynamic";
 
-// 🚀 BULLETPROOF SERIALIZATION
+// 🚀 BULLETPROOF SERIALIZATION & AUTO-CORRECTION
 const serializeLoan = (loan: any) => {
-  const safeTotalRepayment = Number(loan.totalRepayment || 0);
+  // 1. Force recalculate the TRUE Total Repayment by summing up all expected installments
+  // This bypasses any corrupted old database records
+  const computedTotalRepayment = loan.installments?.reduce((sum: number, inst: any) => sum + Number(inst.expectedAmount || 0), 0) || 0;
+  const safeTotalRepayment = computedTotalRepayment > 0 ? computedTotalRepayment : Number(loan.totalRepayment || 0);
+  
+  // 2. Force recalculate the TRUE Total Paid
   const computedTotalPaid = loan.installments?.reduce((sum: number, inst: any) => sum + Number(inst.amountPaid || 0), 0) || 0;
   const safeTotalPaid = Number(loan.totalPaid || computedTotalPaid);
-  const safeRemainingBalance = Number(loan.remainingBalance || (safeTotalRepayment - safeTotalPaid));
+  
+  // 3. Strict Remaining Balance Math
+  const safeRemainingBalance = Number(safeTotalRepayment - safeTotalPaid);
 
   return {
     id: loan.id,
@@ -27,7 +34,7 @@ const serializeLoan = (loan: any) => {
     termDuration: loan.termDuration || 0,
     totalRepayment: safeTotalRepayment,
     totalPaid: safeTotalPaid,
-    remainingBalance: safeRemainingBalance,
+    remainingBalance: Math.max(0, safeRemainingBalance), // Never go below 0
     startDate: loan.startDate,
     endDate: loan.endDate,
     status: loan.status,
@@ -46,6 +53,9 @@ const serializeLoan = (loan: any) => {
   };
 };
 
+// ... (Rest of standard formatting function)
+const formatMoney = (val: number) => val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default async function Dashboard() {
   const cookieStore = await cookies();
   const userRole = cookieStore.get("user_role")?.value || "AGENT";
@@ -57,28 +67,15 @@ export default async function Dashboard() {
   const portfolioRecords = await prisma.systemPortfolio.findMany({ select: { id: true, name: true }, orderBy: { createdAt: 'asc' } });
   const portfolios = portfolioRecords.map(p => ({ id: p.id, name: p.name }));
 
-  // ============================================================================
-  // 🚀 AGENT IDENTITY PROTOCOL & DYNAMIC COMMISSION FETCH
-  // ============================================================================
   let agentData = null;
 
   if (!isAdmin) {
     if (userName && userName !== "User") {
       agentData = await prisma.agent.findFirst({
-        where: {
-          OR: [
-            { username: userName },
-            { name: userName }
-          ]
-        },
+        where: { OR: [ { username: userName }, { name: userName } ] },
         include: { 
-          // 🚀 WE NOW FETCH ALL LOANS & THEIR PAYMENTS TO COMPUTE LIFETIME EARNINGS
           loans: { 
-            include: { 
-              client: true, 
-              installments: { orderBy: { period: 'asc' } },
-              payments: { where: { status: 'Paid' } } // 🚀 FETCH ONLY PAID TRANSACTIONS
-            } 
+            include: { client: true, installments: { orderBy: { period: 'asc' } }, payments: { where: { status: 'Paid' } } } 
           }, 
           commissions: true 
         }
@@ -87,16 +84,7 @@ export default async function Dashboard() {
 
     if (!agentData) {
       agentData = await prisma.agent.findFirst({
-        include: { 
-          loans: { 
-            include: { 
-              client: true, 
-              installments: { orderBy: { period: 'asc' } },
-              payments: { where: { status: 'Paid' } }
-            } 
-          }, 
-          commissions: true 
-        }
+        include: { loans: { include: { client: true, installments: { orderBy: { period: 'asc' } }, payments: { where: { status: 'Paid' } } } }, commissions: true }
       });
     }
   }
@@ -113,37 +101,19 @@ export default async function Dashboard() {
 
   const agentFilter = (!isAdmin && agentData) ? { agentId: agentData.id } : {};
 
-  // ============================================================================
-  // 🎯 WIDE-SWEEP RADAR UPGRADE
-  // ============================================================================
   const overdueInstallments = await prisma.loanInstallment.findMany({ 
-    where: { 
-      status: { in: ["PENDING", "LATE", "MISSED", "PARTIAL"] }, 
-      dueDate: { lt: today }, 
-      loan: { portfolio, ...agentFilter } 
-    }, 
-    include: { loan: { include: fullLoanInclude } }, 
-    orderBy: { dueDate: 'asc' } 
+    where: { status: { in: ["PENDING", "LATE", "MISSED", "PARTIAL"] }, dueDate: { lt: today }, loan: { portfolio, ...agentFilter } }, 
+    include: { loan: { include: fullLoanInclude } }, orderBy: { dueDate: 'asc' } 
   });
 
   const dueTodayInstallments = await prisma.loanInstallment.findMany({ 
-    where: { 
-      status: { in: ["PENDING", "PARTIAL"] }, 
-      dueDate: { gte: today, lte: todayEnd }, 
-      loan: { portfolio, ...agentFilter } 
-    }, 
-    include: { loan: { include: fullLoanInclude } }, 
-    orderBy: { dueDate: 'asc' } 
+    where: { status: { in: ["PENDING", "PARTIAL"] }, dueDate: { gte: today, lte: todayEnd }, loan: { portfolio, ...agentFilter } }, 
+    include: { loan: { include: fullLoanInclude } }, orderBy: { dueDate: 'asc' } 
   });
 
   const upcomingInstallments = await prisma.loanInstallment.findMany({ 
-    where: { 
-      status: { in: ["PENDING", "PARTIAL"] }, 
-      dueDate: { gt: todayEnd, lte: nextWeek }, 
-      loan: { portfolio, ...agentFilter } 
-    }, 
-    include: { loan: { include: fullLoanInclude } }, 
-    orderBy: { dueDate: 'asc' } 
+    where: { status: { in: ["PENDING", "PARTIAL"] }, dueDate: { gt: todayEnd, lte: nextWeek }, loan: { portfolio, ...agentFilter } }, 
+    include: { loan: { include: fullLoanInclude } }, orderBy: { dueDate: 'asc' } 
   });
 
   const getDaysLate = (dueDate: Date): number => { return Math.floor((today.getTime() - new Date(dueDate).getTime()) / (1000 * 60 * 60 * 24)); };
@@ -158,47 +128,34 @@ export default async function Dashboard() {
 
   const alerts = { overdue: mapAlerts(overdueInstallments), dueToday: mapAlerts(dueTodayInstallments), upcoming: mapAlerts(upcomingInstallments) };
 
-  // ============================================================================
-  // 🚀 DEPLOY THE TACTICAL HUD (WITH 60/40 MATH ENGINE)
-  // ============================================================================
   if (!isAdmin && agentData) {
     let totalRiskLiability = 0, totalCollected = 0, pendingCommission = 0, totalLifetimeEarnings = 0;
     
-    // 🚀 DYNAMIC 60/40 CALCULATOR: 40% of all interest collected by this agent
     agentData.loans.forEach(loan => {
       const loanInterestCollected = loan.payments.reduce((sum, p) => sum + Number(p.interestPortion || 0), 0);
-      totalLifetimeEarnings += (loanInterestCollected * 0.40); // 40% goes to the Agent!
+      totalLifetimeEarnings += (loanInterestCollected * 0.40); 
     });
 
-    // Check if the House has officially paid out any of these earnings
     let totalPaidOutByHouse = 0;
-    agentData.commissions.forEach(comm => { 
-      if (comm.isPaidOut) totalPaidOutByHouse += Number(comm.amount); 
-    });
-
-    // Pending payout is what they earned MINUS what the House already gave them
+    agentData.commissions.forEach(comm => { if (comm.isPaidOut) totalPaidOutByHouse += Number(comm.amount); });
     pendingCommission = totalLifetimeEarnings - totalPaidOutByHouse;
     
-    // We only want to show ACTIVE loans in the client list grid
     const activeLoans = agentData.loans.filter(loan => loan.status === 'ACTIVE');
 
     const activeClients = activeLoans.map(loan => {
-      const computedTotalPaid = loan.installments?.reduce((sum: number, inst: any) => sum + Number(inst.amountPaid || 0), 0) || 0;
-      const safeTotalPaid = Number(loan.totalPaid || computedTotalPaid);
-      const safeRemaining = Number(loan.remainingBalance || (Number(loan.totalRepayment || 0) - safeTotalPaid));
-
-      totalRiskLiability += safeRemaining; 
-      totalCollected += safeTotalPaid;
+      const serialized = serializeLoan(loan);
+      totalRiskLiability += serialized.remainingBalance; 
+      totalCollected += serialized.totalPaid;
 
       const nextPending = loan.installments.find(i => i.status === "PENDING" || i.status === "PARTIAL" || i.status === "LATE" || i.status === "MISSED");
       const daysLate = nextPending && new Date(nextPending.dueDate) < today ? Math.floor((today.getTime() - new Date(nextPending.dueDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
       
       return {
         loanId: loan.id, clientId: loan.clientId, clientName: `${loan.client.firstName} ${loan.client.lastName}`, firstName: loan.client.firstName,
-        phone: loan.client.phone || '', originalPrincipal: Number(loan.principal), remainingBalance: safeRemaining,
+        phone: loan.client.phone || '', originalPrincipal: Number(loan.principal), remainingBalance: serialized.remainingBalance,
         nextDueDate: nextPending?.dueDate ? new Date(nextPending.dueDate).toISOString() : null, nextDueAmount: nextPending ? Number(nextPending.expectedAmount) : null,
         nextDuePeriod: nextPending ? nextPending.period : null, status: daysLate > 0 ? 'OVERDUE' : 'ON_TRACK', daysLate,
-        fbProfileUrl: loan.client.fbProfileUrl || null, messengerId: loan.client.messengerId || null, loan: serializeLoan(loan)
+        fbProfileUrl: loan.client.fbProfileUrl || null, messengerId: loan.client.messengerId || null, loan: serialized
       };
     });
 
@@ -212,14 +169,10 @@ export default async function Dashboard() {
     return <AgentPortalClient agent={processedAgentData} alerts={alerts} portfolios={portfolios} />;
   }
 
-  // ============================================================================
-  // NORMAL MASTER ADMIN DASHBOARD
-  // ============================================================================
-
   const ledgers = await prisma.ledger.findMany({ where: { portfolio }, orderBy: { createdAt: 'desc' }, include: { loan: { include: { client: true } }, payment: true } });
   
   const formatLedgerEntry = (ledger: typeof ledgers[0]) => {
-    const amount = Number(ledger.amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const amount = formatMoney(Number(ledger.amount));
     const clientName = ledger.loan?.client ? `${ledger.loan.client.firstName} ${ledger.loan.client.lastName}` : null;
     switch (ledger.transactionType) {
       case 'LOAN_DISBURSEMENT': case 'DISBURSEMENT': return { icon: '💸', title: 'Loan Disbursed', description: clientName ? `Disbursed ₱${amount} to ${clientName}` : `Disbursed ₱${amount}`, color: 'text-blue-400' };
@@ -242,19 +195,25 @@ export default async function Dashboard() {
     const capitalTransactions = await prisma.capitalTransaction.findMany({ where: { portfolio } });
     let totalCapitalDeposits = 0, totalCapitalWithdrawals = 0;
     capitalTransactions.forEach(tx => { if (tx.type === "DEPOSIT") totalCapitalDeposits += Number(tx.amount); else totalCapitalWithdrawals += Number(tx.amount); });
+    
     const expenses = await prisma.expense.findMany({ where: { portfolio } });
     let totalExpenses = 0;
     expenses.forEach(exp => totalExpenses += Number(exp.amount));
+    
     let totalDisbursements = 0;
     ledgers.forEach(entry => { if (entry.debitAccount === "Loans Receivable") totalDisbursements += Number(entry.amount); });
+    
     const loansInPortfolio = await prisma.loan.findMany({ where: { portfolio }, select: { id: true } });
     const loanIds = loansInPortfolio.map(l => l.id);
+    
     const payments = await prisma.payment.findMany({ where: { loanId: { in: loanIds }, status: "Paid" } });
     let totalPrincipalCollected = 0, totalInterestCollected = 0;
     payments.forEach(p => { totalPrincipalCollected += Number(p.principalPortion); totalInterestCollected += Number(p.interestPortion); });
+    
     vaultCash = totalCapitalDeposits - totalCapitalWithdrawals - totalDisbursements + totalPrincipalCollected + totalInterestCollected - totalExpenses;
     outstandingLoans = totalDisbursements - totalPrincipalCollected;
     deployableCapital = Number(vaultCash) * 0.85;
+    
     const activeLoans = await prisma.loan.findMany({ where: { portfolio, status: 'ACTIVE' }, select: { principal: true } });
     let totalActivePrincipal = 0;
     activeLoans.forEach(loan => { totalActivePrincipal += Number(loan.principal); });
@@ -277,20 +236,22 @@ export default async function Dashboard() {
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Available Vault Cash</p>
-            <p className="text-3xl font-bold text-emerald-400">₱{vaultCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+            {/* 🚀 STRICT DECIMAL FORMATTING APPLIED HERE */}
+            <p className="text-3xl font-bold text-emerald-400">₱{formatMoney(vaultCash)}</p>
           </div>
           <div className="bg-gradient-to-br from-emerald-900/50 to-teal-900/50 border border-emerald-500/30 rounded-2xl p-6 shadow-xl">
             <p className="text-xs text-emerald-400 uppercase tracking-wider mb-1">⚡ Deployable Capital (85%)</p>
-            <p className="text-3xl font-bold text-emerald-400">₱{deployableCapital.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+            {/* 🚀 STRICT DECIMAL FORMATTING APPLIED HERE */}
+            <p className="text-3xl font-bold text-emerald-400">₱{formatMoney(deployableCapital)}</p>
             <p className="text-xs text-zinc-500 mt-1">15% safety reserve</p>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
             <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Outstanding Loans</p>
-            <p className="text-3xl font-bold text-blue-400">₱{outstandingLoans.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+            <p className="text-3xl font-bold text-blue-400">₱{formatMoney(outstandingLoans)}</p>
           </div>
           <div className="bg-gradient-to-br from-amber-900/30 to-yellow-900/20 border border-amber-500/30 rounded-2xl p-6 shadow-xl">
             <p className="text-xs text-amber-400 uppercase tracking-wider mb-1">⭐ PROJECTED REBATES (4%)</p>
-            <p className="text-3xl font-bold text-amber-400">₱{projectedRebates.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+            <p className="text-3xl font-bold text-amber-400">₱{formatMoney(projectedRebates)}</p>
             <p className="text-xs text-zinc-500 mt-1">Incentive pool for on-time payments</p>
           </div>
         </div>
@@ -357,9 +318,7 @@ export default async function Dashboard() {
         </div>
       )}
 
-      {/* 🚀 RESTORED TIME TRAVEL DEBUG TOOL */}
       {isAdmin && <TimeTravelDebug />}
     </div>
   );
 }
-
