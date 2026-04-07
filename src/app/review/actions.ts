@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { revalidatePath } from 'next/cache';
 import { cookies } from "next/headers";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const PORTFOLIO_COOKIE = "fintech_portfolio";
 const DEFAULT_PORTFOLIO = "Main Portfolio";
@@ -67,7 +68,7 @@ export async function disburseLoan(data: LoanDisbursementData) {
           lastName: currentApp.lastName || "Unknown",
           phone: currentApp.phone || null,
           address: currentApp.address || null,
-          digitalSignature: currentApp.digitalSignature, // CRITICAL: Carry over signature
+          digitalSignature: currentApp.digitalSignature, 
           applicationId: data.applicationId,
           portfolio
         }
@@ -78,7 +79,6 @@ export async function disburseLoan(data: LoanDisbursementData) {
       if (!client.applicationId) {
         updateData.applicationId = data.applicationId;
       }
-      // If client has no signature but application does, copy it
       if (!client.digitalSignature && currentApp.digitalSignature) {
         updateData.digitalSignature = currentApp.digitalSignature;
       }
@@ -106,7 +106,7 @@ export async function disburseLoan(data: LoanDisbursementData) {
         break;
     }
 
-    // 4. Create the Loan record with portfolio and collateral
+    // 4. Create the Loan record
     const loan = await prisma.loan.create({
       data: {
         clientId: client.id,
@@ -120,17 +120,14 @@ export async function disburseLoan(data: LoanDisbursementData) {
         endDate: endDate,
         portfolio,
         agentId: data.agentId || null,
-        // Copy collateral fields from application
         collateralName: currentApp.collateralName || null,
         collateralDescription: currentApp.collateralDescription || null,
         collateralDefects: currentApp.collateralDefects || null
       }
     });
 
-    // 5. 🚀 CALENDAR OVERRIDE: Create the LoanInstallment records with Ironclad Server Math
+    // 5. Create the LoanInstallment records
     const disbursementDate = new Date();
-    
-    // We use the index `i` of the loop to force perfect chronological spacing, ignoring frontend glitches
     for (let i = 0; i < data.schedule.length; i++) {
       const scheduleItem = data.schedule[i];
       const truePeriodNumber = i + 1; 
@@ -161,9 +158,8 @@ export async function disburseLoan(data: LoanDisbursementData) {
       });
     }
 
-    // 6. Create the Ledger entry AND AuditLog in a transaction
+    // 6. Create Ledger & AuditLog
     await prisma.$transaction([
-      // Ledger entry
       prisma.ledger.create({
         data: {
           transactionType: "Loan Disbursement",
@@ -174,7 +170,6 @@ export async function disburseLoan(data: LoanDisbursementData) {
           portfolio
         }
       }),
-      // Immutable Audit Log
       prisma.auditLog.create({
         data: {
           type: "DISBURSEMENT",
@@ -188,16 +183,15 @@ export async function disburseLoan(data: LoanDisbursementData) {
       })
     ]);
 
-    // 7. Update the application status to APPROVED and link to client
+    // 7. Update app status
     await prisma.application.update({
       where: { id: data.applicationId },
       data: { 
         status: "APPROVED",
-        client: { connect: { id: client.id } } // CRITICAL: Link application to client for KYC dossier
+        client: { connect: { id: client.id } } 
       }
     });
 
-    // 8. Revalidate paths
     revalidatePath("/");
     revalidatePath("/payments");
     revalidatePath("/clients");
@@ -226,3 +220,43 @@ export async function rejectApplication(applicationId: number) {
   }
 }
 
+// 🚀 NEW: GEMINI AI LIVE DURATION CALCULATOR
+export async function calculateOptimalDurationWithAI(principal: number, termType: string) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!apiKey) return { success: false, error: "API Key missing" };
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `
+      You are an expert micro-lending risk assessment AI.
+      Calculate the mathematically optimal loan duration to maximize profit and minimize inflation bleed.
+      
+      LOAN DETAILS:
+      - Principal Amount: ₱${principal}
+      - Payment Frequency: ${termType}
+
+      RULES:
+      - Micro-loans (under ₱5k) should be paid off fast to avoid bleeding.
+      - Larger loans require more time so the amortization is affordable.
+      - Respond ONLY with a single integer representing the number of ${termType}.
+      - Do not include any words, symbols, or explanations. Just the number.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    
+    // Extract only the mathematical integer
+    const optimalDuration = parseInt(text.replace(/[^0-9]/g, ''), 10);
+
+    if (isNaN(optimalDuration) || optimalDuration <= 0) {
+      return { success: false, error: "AI returned invalid calculation" };
+    }
+    
+    return { success: true, duration: optimalDuration };
+  } catch (error: any) {
+    console.error("AI Calculation Error:", error);
+    return { success: false, error: error.message };
+  }
+}
