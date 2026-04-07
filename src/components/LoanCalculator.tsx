@@ -61,7 +61,6 @@ export default function LoanCalculator({
     (suggestedTermType as "Days" | "Weeks" | "Months") || "Months"
   );
   
-  // 🚀 AI NEURAL LINK STATES
   const [termDuration, setTermDuration] = useState<number>(suggestedDuration || 3);
   const [isAIOptimizing, setIsAIOptimizing] = useState(false);
   
@@ -72,7 +71,6 @@ export default function LoanCalculator({
   const [vaultCash, setVaultCash] = useState<number | null>(null);
   const [loadingVaultCash, setLoadingVaultCash] = useState(true);
 
-  // Fetch Agents
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/agents', { signal: controller.signal })
@@ -83,7 +81,6 @@ export default function LoanCalculator({
     return () => controller.abort();
   }, []);
 
-  // Fetch Vault Cash
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/vault-cash', { signal: controller.signal })
@@ -94,7 +91,7 @@ export default function LoanCalculator({
     return () => controller.abort();
   }, []);
 
-  // 🧠 GEMINI AI: AUTOMATIC DURATION OPTIMIZER
+  // 🧠 GEMINI AI: LIVE DURATION OPTIMIZER (NOW PASSING DISCOUNTED RATE)
   useEffect(() => {
     const triggerAIOptimization = async () => {
       if (principal <= 0) {
@@ -104,17 +101,16 @@ export default function LoanCalculator({
       setIsAIOptimizing(true);
 
       try {
-        const response = await calculateOptimalDurationWithAI(principal, termType);
+        // 🚀 Passing the interest rate to the new Strategist Engine!
+        const response = await calculateOptimalDurationWithAI(principal, termType, discountedRate);
         if (response.success && response.duration > 0) {
           setTermDuration(response.duration);
         } else {
-           if (principal <= 5000) setTermDuration(termType === "Days" ? 30 : termType === "Weeks" ? 4 : 1);
-           else setTermDuration(termType === "Days" ? 60 : termType === "Weeks" ? 8 : 2);
+          setTermDuration(1); // Failsafe
         }
       } catch (error) {
         console.error("AI Link Error:", error);
-        if (principal <= 5000) setTermDuration(termType === "Days" ? 30 : termType === "Weeks" ? 4 : 1);
-        else setTermDuration(termType === "Days" ? 60 : termType === "Weeks" ? 8 : 2);
+        setTermDuration(1); // Failsafe
       } finally {
         setIsAIOptimizing(false);
       }
@@ -122,7 +118,7 @@ export default function LoanCalculator({
 
     const timeoutId = setTimeout(() => { triggerAIOptimization(); }, 800); 
     return () => clearTimeout(timeoutId);
-  }, [principal, termType]);
+  }, [principal, termType, discountedRate]); // 👈 Triggers if rate changes!
 
   const totalInterest = Number((principal * (discountedRate / 100)).toFixed(2));
   const totalRepayment = Number((principal + totalInterest).toFixed(2));
@@ -130,7 +126,6 @@ export default function LoanCalculator({
   const liquidityDeficit = insufficientLiquidity ? principal - (vaultCash || 0) : 0;
   const displayPaymentPerPeriod = termDuration > 0 ? totalRepayment / termDuration : 0;
 
-  // 🚀 AUTO-GENERATING SCHEDULE ALGORITHM
   const generateSchedule = () => {
     if (!principal || principal <= 0 || !termDuration) return [];
     
@@ -273,7 +268,6 @@ export default function LoanCalculator({
         </div>
       </div>
 
-      {/* 🚀 AUTO-GENERATED AMORTIZATION SCHEDULE UI */}
       {isAIOptimizing ? (
         <div className="mt-4 p-4 border border-[#2a2a35] rounded-xl text-center bg-[#1c1c21] print:hidden">
           <span className="text-cyan-400 font-black animate-pulse flex items-center justify-center gap-2">🧠 AI GENERATING SCHEDULE...</span>
