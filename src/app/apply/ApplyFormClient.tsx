@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitApplicationRecord } from "./actions";
-import { calculateOptimalDurationWithAI } from "@/app/review/actions"; // 🧠 NEURAL LINK INJECTED
+import { calculateOptimalDurationWithAI } from "@/app/review/actions";
 import SignaturePad from "@/components/SignaturePad";
 
 interface Agent {
@@ -46,7 +46,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
   const [termType, setTermType] = useState<string>("Weeks");
   const [agentId, setAgentId] = useState<string>("");
 
-  // 🚀 AI NEURAL LINK STATES
   const [optimalDuration, setOptimalDuration] = useState<number>(0);
   const [isAIOptimizing, setIsAIOptimizing] = useState(false);
 
@@ -61,7 +60,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
   const discountAmount = principal * discountRate;
   const netInterest = principal * effectiveRate;
   
-  // 🧠 GEMINI AI: LIVE DURATION OPTIMIZER
   useEffect(() => {
     const triggerAIOptimization = async () => {
       if (principal <= 0) {
@@ -73,11 +71,25 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
 
       try {
         const response = await calculateOptimalDurationWithAI(principal, termType);
-        if (response.success && response.duration) {
+        // 🚀 FALLBACK: If AI fails or returns 0, use a default fallback to ensure schedule generates
+        if (response.success && response.duration > 0) {
           setOptimalDuration(response.duration);
+        } else {
+           // Fallback logic for invalid AI returns
+           if (principal <= 5000) {
+             setOptimalDuration(termType === "Days" ? 30 : termType === "Weeks" ? 4 : 1);
+           } else {
+             setOptimalDuration(termType === "Days" ? 60 : termType === "Weeks" ? 8 : 2);
+           }
         }
       } catch (error) {
         console.error("AI Link Error:", error);
+        // Fallback logic on error
+        if (principal <= 5000) {
+           setOptimalDuration(termType === "Days" ? 30 : termType === "Weeks" ? 4 : 1);
+        } else {
+           setOptimalDuration(termType === "Days" ? 60 : termType === "Weeks" ? 8 : 2);
+        }
       } finally {
         setIsAIOptimizing(false);
       }
@@ -364,14 +376,17 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
               </div>
             </div>
           )}
+
           <div style={{ pageBreakBefore: 'always' }} className="pt-8">
             <h2 className="text-2xl font-bold text-black mb-1 text-center">APPENDIX A: FORENSIC & COLLATERAL EVIDENCE</h2>
             <p className="text-sm text-gray-600 text-center mb-4 border-b-2 border-black pb-4">Applicant: {formData.firstName} {formData.lastName}</p>
+
             <h3 className="font-bold text-lg mb-2 uppercase bg-gray-200 p-2">Identity Verification</h3>
             <div className="grid grid-cols-2 gap-4 mb-6">
               {formData.selfieUrl && <div className="border border-gray-300 p-2" style={{ pageBreakInside: 'avoid' }}><p className="font-bold text-xs mb-1 text-center">LIVE SELFIE</p><img src={formData.selfieUrl} className="w-full h-40 object-contain" /></div>}
               {formData.idPhotoUrl && <div className="border border-gray-300 p-2" style={{ pageBreakInside: 'avoid' }}><p className="font-bold text-xs mb-1 text-center">GOVERNMENT ID</p><img src={formData.idPhotoUrl} className="w-full h-40 object-contain" /></div>}
             </div>
+
             <h3 className="font-bold text-lg mb-2 uppercase bg-gray-200 p-2">6-Point Collateral Inspection</h3>
             <div className="grid grid-cols-2 gap-4">
               {formData.collateralPhotoFront && <div className="border border-gray-300 p-2" style={{ pageBreakInside: 'avoid' }}><p className="font-bold text-xs mb-1 text-center">FRONT VIEW</p><img src={formData.collateralPhotoFront} className="w-full h-40 object-contain" /></div>}
@@ -457,7 +472,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                 <span className="text-emerald-400 font-bold">{termType === 'Days' ? 'Daily' : termType === 'Weeks' ? 'Weekly' : 'Monthly'} Payments</span>
               </div>
               
-              {/* 🧠 AI OPTIMIZER UI UPDATED HERE */}
               <div className="flex justify-between items-center mb-2">
                 <span className="text-zinc-400 text-sm">Optimal Duration:</span>
                 {isAIOptimizing ? (
@@ -491,7 +505,12 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                 <span className="text-emerald-400 font-bold text-lg">₱{perPeriod.toFixed(2)}</span>
               </div>
               
-              {amortizationSchedule.length > 0 && (
+              {/* 🚀 FALLBACK: Render schedule or calculating indicator */}
+              {isAIOptimizing ? (
+                <div className="mt-4 p-4 border border-zinc-700 rounded-xl text-center bg-zinc-900">
+                  <span className="text-cyan-400 font-black animate-pulse flex items-center justify-center gap-2">🧠 AI GENERATING SCHEDULE...</span>
+                </div>
+              ) : amortizationSchedule.length > 0 ? (
                 <div className="mt-4 border border-zinc-700 rounded-xl overflow-hidden">
                   <div className="bg-zinc-800 p-2 flex justify-between items-center">
                     <h4 className="font-bold text-white text-xs uppercase tracking-wider">📅 AMORTIZATION SCHEDULE</h4>
@@ -513,6 +532,10 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                     ))}
                   </div>
                 </div>
+              ) : (
+                 <div className="mt-4 p-4 border border-zinc-700 rounded-xl text-center bg-zinc-900">
+                   <span className="text-zinc-500 font-bold text-xs uppercase">Enter principal to generate schedule</span>
+                 </div>
               )}
             </div>
           </div>
@@ -665,7 +688,7 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
             </div>
           </div>
 
-          <button type="submit" disabled={status !== "" || isAIOptimizing} className="w-full bg-[#00df82] border border-[#00df82]/40 text-[#09090b] py-5 font-black text-xs tracking-widest uppercase hover:bg-[#00df82]/80 disabled:opacity-50 rounded-xl transition-colors shadow-[0_0_20px_rgba(0,223,130,0.15)]">
+          <button type="submit" disabled={status !== "" || isAIOptimizing || optimalDuration === 0} className="w-full bg-[#00df82] border border-[#00df82]/40 text-[#09090b] py-5 font-black text-xs tracking-widest uppercase hover:bg-[#00df82]/80 disabled:opacity-50 rounded-xl transition-colors shadow-[0_0_20px_rgba(0,223,130,0.15)]">
             {status || (isAIOptimizing ? "🧠 OPTIMIZING TERMS..." : "SUBMIT APPLICATION")}
           </button>
         </form>
@@ -673,3 +696,4 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
     </div>
   );
 }
+
