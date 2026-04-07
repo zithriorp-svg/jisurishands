@@ -19,7 +19,6 @@ export default function DirectLoanCalculator({ clientId, clientName, onDisburseC
   const [principal, setPrincipal] = useState<number>(5000);
   const [termType, setTermType] = useState<"Days" | "Weeks" | "Months">("Months");
   
-  // 🚀 AI NEURAL LINK STATES
   const [termDuration, setTermDuration] = useState<number>(3);
   const [isAIOptimizing, setIsAIOptimizing] = useState(false);
 
@@ -55,7 +54,7 @@ export default function DirectLoanCalculator({ clientId, clientName, onDisburseC
       .catch(e => { if (e.name !== 'AbortError') console.error(e); })
   }, []);
 
-  // 🧠 GEMINI AI: AUTOMATIC DURATION OPTIMIZER
+  // 🧠 GEMINI AI: LIVE DURATION OPTIMIZER
   useEffect(() => {
     const triggerAIOptimization = async () => {
       if (principal <= 0) {
@@ -64,17 +63,16 @@ export default function DirectLoanCalculator({ clientId, clientName, onDisburseC
       }
       setIsAIOptimizing(true);
       try {
-        const response = await calculateOptimalDurationWithAI(principal, termType);
+        // 🚀 Passing 6% to match the effective rate of repeat clients!
+        const response = await calculateOptimalDurationWithAI(principal, termType, 6);
         if (response.success && response.duration > 0) {
           setTermDuration(response.duration);
         } else {
-           if (principal <= 5000) setTermDuration(termType === "Days" ? 30 : termType === "Weeks" ? 4 : 1);
-           else setTermDuration(termType === "Days" ? 60 : termType === "Weeks" ? 8 : 2);
+           setTermDuration(1); // Failsafe
         }
       } catch (error) {
         console.error("AI Link Error:", error);
-        if (principal <= 5000) setTermDuration(termType === "Days" ? 30 : termType === "Weeks" ? 4 : 1);
-        else setTermDuration(termType === "Days" ? 60 : termType === "Weeks" ? 8 : 2);
+        setTermDuration(1); // Failsafe
       } finally {
         setIsAIOptimizing(false);
       }
@@ -91,7 +89,6 @@ export default function DirectLoanCalculator({ clientId, clientName, onDisburseC
   const insufficientLiquidity = vaultCash !== null && principal > vaultCash;
   const liquidityDeficit = insufficientLiquidity ? principal - (vaultCash || 0) : 0;
 
-  // 🚀 AUTO-GENERATING SCHEDULE ALGORITHM
   const generateSchedule = () => {
     if (!principal || principal <= 0 || !termDuration) return [];
     
@@ -228,7 +225,6 @@ export default function DirectLoanCalculator({ clientId, clientName, onDisburseC
         <div className="text-center"><p className="text-xs text-zinc-500 uppercase">Per Period</p><p className="text-lg font-bold text-white">{formatCurrency(paymentPerPeriod)}</p></div>
       </div>
 
-      {/* 🚀 AUTO-GENERATED AMORTIZATION SCHEDULE UI */}
       {isAIOptimizing ? (
         <div className="mt-4 p-4 border border-zinc-700 rounded-xl text-center bg-zinc-800">
           <span className="text-cyan-400 font-black animate-pulse flex items-center justify-center gap-2">🧠 AI GENERATING SCHEDULE...</span>
