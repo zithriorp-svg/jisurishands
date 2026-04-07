@@ -3,13 +3,19 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function AgentReceiptPage(props: any) {
-  // 🚀 PROPS SHIELD: Prevents Next.js 14 vs 15 searchParams crashes
-  const params = await Promise.resolve(props.searchParams);
-  const phone = params?.phone;
+// 🚀 STRICT SHIELD: Exact TypeScript definitions so Vercel's compiler does not panic and crash the build.
+export default async function AgentReceiptPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  // Await the params safely
+  const params = await searchParams;
+  const phone = typeof params?.phone === 'string' ? params.phone : undefined;
 
   if (!phone) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: No phone number provided.</div>;
 
+  // Fetch the latest application using the agent's phone number
   const app = await prisma.agentApplication.findFirst({
     where: { phone: phone },
     orderBy: { createdAt: 'desc' }
@@ -17,7 +23,7 @@ export default async function AgentReceiptPage(props: any) {
 
   if (!app) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: Application not found.</div>;
 
-  // 🚀 HYDRATION SHIELD: Force Asia/Manila timezone so Vercel (USA) and Phone (Japan) perfectly agree!
+  // 🚀 HYDRATION SHIELD: Force Asia/Manila timezone so the Server and your Phone perfectly agree!
   const currentDate = new Date(app.createdAt).toLocaleString('en-US', { 
     timeZone: 'Asia/Manila',
     year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' 
@@ -32,10 +38,10 @@ export default async function AgentReceiptPage(props: any) {
       <div className="print:hidden max-w-2xl mx-auto mb-8 flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-xl">
         <div>
           <h1 className="text-white font-bold">Master Contract Dossier</h1>
-          <p className="text-xs text-zinc-500">Applicant: {app.firstName} {app.lastName}</p>
+          <p className="text-xs text-zinc-500">Agent: {app.firstName} {app.lastName}</p>
         </div>
         <div className="flex gap-4">
-          <Link href="/agents" className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 transition-all">← Return to Fleet</Link>
+          <Link href="/agents" className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 transition-all">← Back to Fleet</Link>
           <div dangerouslySetInnerHTML={{ __html: `<button onclick="window.print()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg transition-all">🖨️ Print / Save PDF</button>` }} />
         </div>
       </div>
@@ -73,13 +79,13 @@ export default async function AgentReceiptPage(props: any) {
           <div className="col-span-2 font-medium italic text-gray-700">{app.collateralCondition || '—'}</div>
         </div>
 
-        {/* 🚀 PRINTABLE TAGALOG AGREEMENT */}
-        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Pananagutan (Agent Agreement)</h2>
+        {/* 🚀 TAGALOG AGREEMENT */}
+        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Pananagutan (Agent & Co-Maker Agreement)</h2>
         <div className="text-sm mb-6 pl-2 text-gray-800 space-y-2 leading-relaxed">
-          <p><strong>✅ BENEPISYO:</strong> Makakatanggap ng 40% na komisyon mula sa purong interes ng mga nakolektang pautang.</p>
+          <p><strong>✅ BENEPISYO:</strong> Makakatanggap ng 40% na komisyon mula sa purong interes ng mga nakolektang pautang na personal na naasikaso ng Agent.</p>
           <p><strong>🛠️ TUNGKULIN:</strong> Personal na magsasala ng kliyente, maniningil, at magre-remit ng bayad sa tamang oras.</p>
           <p className="text-rose-800 font-bold bg-rose-50 p-3 border border-rose-300 rounded mt-2">
-            ⚠️ PANANAGUTAN BILANG CO-MAKER: Kung hindi magbayad, magtago, o tumakbo ang kliyente, ang Agent bilang Co-Maker ang direktang magbabayad ng buong utang (Principal + Interes + Penalties). Kusang-loob na binibigyan ng karapatan ang kumpanya na hatakin (seize) ang idineklarang kolateral sa itaas nang walang karagdagang abiso sa korte.
+            ⚠️ PANANAGUTAN BILANG CO-MAKER: Kung hindi magbayad, magtago, o tumakbo ang kliyente, ang Agent bilang Co-Maker ang direktang magbabayad ng utang (Principal + Interes + Penalties). Kung hindi mabayaran ng Agent ang utang ng kanyang nag-default na kliyente, kusang-loob na binibigyan ng karapatan ang kumpanya na hatakin (seize) ang idineklarang kolateral sa itaas nang walang karagdagang abiso sa korte.
           </p>
         </div>
 
@@ -89,14 +95,14 @@ export default async function AgentReceiptPage(props: any) {
             <div className="p-4 inline-block bg-gray-50 border-2 border-gray-300 rounded-lg">
               <img src={app.digitalSignature} alt="Digital Signature" style={{ maxHeight: '100px', filter: 'invert(1) contrast(200%)' }} />
             </div>
-            <p className="text-xs text-gray-500 mt-2 font-bold uppercase">Signatory / Co-Maker: {app.firstName} {app.lastName}</p>
+            <p className="text-xs text-gray-500 mt-2 font-bold uppercase">Signatory: {app.firstName} {app.lastName}</p>
           </div>
         )}
 
         {/* PAGE 2: PHOTO GRID */}
         <div style={{ pageBreakBefore: 'always' }} className="pt-10">
           <h2 className="text-2xl font-bold text-black mb-2 text-center uppercase tracking-wider">Appendix A: Forensic Evidence</h2>
-          <p className="text-sm text-gray-600 text-center mb-6 border-b-2 border-black pb-4 font-bold uppercase">Applicant: {app.firstName} {app.lastName} • ID: {app.id}</p>
+          <p className="text-sm text-gray-600 text-center mb-6 border-b-2 border-black pb-4 font-bold uppercase">Agent: {app.firstName} {app.lastName} • ID: {app.id}</p>
 
           <h3 className="font-bold text-lg mb-3 uppercase bg-gray-200 p-2 border border-gray-300">Identity Verification</h3>
           <div className="grid grid-cols-2 gap-6 mb-8">
@@ -119,3 +125,4 @@ export default async function AgentReceiptPage(props: any) {
     </div>
   );
 }
+
