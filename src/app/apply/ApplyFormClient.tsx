@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { submitApplicationRecord } from "./actions";
+import { calculateOptimalDurationWithAI } from "@/app/review/actions"; // 🧠 NEURAL LINK INJECTED
 import SignaturePad from "@/components/SignaturePad";
 
 interface Agent {
@@ -45,7 +46,10 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
   const [termType, setTermType] = useState<string>("Weeks");
   const [agentId, setAgentId] = useState<string>("");
 
-  // 🚀 UPGRADE: Fully manual, adjustable interest rates!
+  // 🚀 AI NEURAL LINK STATES
+  const [optimalDuration, setOptimalDuration] = useState<number>(0);
+  const [isAIOptimizing, setIsAIOptimizing] = useState(false);
+
   const [manualOfficialRate, setManualOfficialRate] = useState<number>(10);
   const [manualDiscountedRate, setManualDiscountedRate] = useState<number>(6);
 
@@ -57,19 +61,35 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
   const discountAmount = principal * discountRate;
   const netInterest = principal * effectiveRate;
   
-  const getOptimalDuration = (principal: number, termType: string): number => {
-    if (principal <= 5000) {
-      if (termType === "Days") return 30;
-      if (termType === "Weeks") return 4;
-      return 1;
-    } else {
-      if (termType === "Days") return 60;
-      if (termType === "Weeks") return 8;
-      return 2;
-    }
-  };
-  
-  const optimalDuration = getOptimalDuration(principal, termType);
+  // 🧠 GEMINI AI: LIVE DURATION OPTIMIZER
+  useEffect(() => {
+    const triggerAIOptimization = async () => {
+      if (principal <= 0) {
+        setOptimalDuration(0);
+        return; 
+      }
+
+      setIsAIOptimizing(true);
+
+      try {
+        const response = await calculateOptimalDurationWithAI(principal, termType);
+        if (response.success && response.duration) {
+          setOptimalDuration(response.duration);
+        }
+      } catch (error) {
+        console.error("AI Link Error:", error);
+      } finally {
+        setIsAIOptimizing(false);
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      triggerAIOptimization();
+    }, 800); 
+
+    return () => clearTimeout(timeoutId);
+  }, [principal, termType]);
+
   const totalDue = principal + netInterest;
   const perPeriod = optimalDuration > 0 ? totalDue / optimalDuration : 0;
 
@@ -209,7 +229,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
         principal,
         termType,
         termDuration: optimalDuration,
-        // 🚀 UPGRADE: Passing the manually selected discounted rate to the database
         interestRate: manualDiscountedRate, 
         totalInterest: netInterest,
         totalRepayment: totalDue,
@@ -324,17 +343,9 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
               <ol className="list-decimal pl-5 space-y-2 break-words">
                 <li className="break-words text-black">
                   <strong>INTERES AT GOOD PAYER DISCOUNT:</strong> Ang opisyal na flat-rate interest ng utang na ito ay <strong>{manualOfficialRate}%</strong>. PERO, kung ang NANGUTANG ay magbabayad ng tama sa oras sa lahat ng kanyang iskedul, siya ay bibigyan ng <strong>{Math.round(manualOfficialRate - manualDiscountedRate)}% Good Payer Discount</strong> (kaya magiging {manualDiscountedRate}% na lamang ang epektibong interes).
-                  <br/>
-                  <span className="text-gray-600 text-xs italic mt-1 block">
-                    (Simpleng paliwanag: Kung palagi kang on-time, {manualDiscountedRate}% lang ang tubo ng utang mo. Pero kapag na-late ka kahit isang araw sa iyong hulog, ma-vo-void ang discount at sisingilin ka ng buong {manualOfficialRate}% interes para sa buong kontrata.)
-                  </span>
                 </li>
                 <li className="break-words text-black">
                   <strong>LOAN EXTENSION (ROLLOVER):</strong> Kung sakaling matapos ang kontrata at hindi pa kayang bayaran ng buo ang utang, ang NANGUTANG ay maaaring humingi ng palugit (Rollover). Upang ma-extend ang utang, kailangang magbayad ng <strong>Extension Fee</strong> na katumbas ng {manualDiscountedRate}% ng orihinal na Principal.
-                  <br/>
-                  <span className="text-gray-600 text-xs italic mt-1 block">
-                    (Simpleng paliwanag: Kung ₱20,000 ang utang mo at hindi mo mabayaran sa due date, kailangan mong magbayad ng ₱{Math.round(20000 * (manualDiscountedRate/100))} Extension Fee para mabigyan ka ng panibagong palugit. Ang ₱{Math.round(20000 * (manualDiscountedRate/100))} na ito ay fee lamang at HINDI ibabawas sa utang mong ₱20,000.)
-                  </span>
                 </li>
                 <li className="break-words text-black">Ang nag PAUTANG ay may karapatang mangolekta o maningil ng utang sa pamamagitan ng mga lehitimong paraan tulad ng pagbisita sa bahay, pagtawag, o pagsulat ng liham.</li>
                 <li className="break-words text-black">Ang mga impormasyong ibinigay ng NANGUTANG ay totoo at tama. Ang anumang maling impormasyon ay maaaring maging dahilan ng agarang pagbabayad ng buong halaga.</li>
@@ -353,17 +364,14 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
               </div>
             </div>
           )}
-
           <div style={{ pageBreakBefore: 'always' }} className="pt-8">
             <h2 className="text-2xl font-bold text-black mb-1 text-center">APPENDIX A: FORENSIC & COLLATERAL EVIDENCE</h2>
             <p className="text-sm text-gray-600 text-center mb-4 border-b-2 border-black pb-4">Applicant: {formData.firstName} {formData.lastName}</p>
-
             <h3 className="font-bold text-lg mb-2 uppercase bg-gray-200 p-2">Identity Verification</h3>
             <div className="grid grid-cols-2 gap-4 mb-6">
               {formData.selfieUrl && <div className="border border-gray-300 p-2" style={{ pageBreakInside: 'avoid' }}><p className="font-bold text-xs mb-1 text-center">LIVE SELFIE</p><img src={formData.selfieUrl} className="w-full h-40 object-contain" /></div>}
               {formData.idPhotoUrl && <div className="border border-gray-300 p-2" style={{ pageBreakInside: 'avoid' }}><p className="font-bold text-xs mb-1 text-center">GOVERNMENT ID</p><img src={formData.idPhotoUrl} className="w-full h-40 object-contain" /></div>}
             </div>
-
             <h3 className="font-bold text-lg mb-2 uppercase bg-gray-200 p-2">6-Point Collateral Inspection</h3>
             <div className="grid grid-cols-2 gap-4">
               {formData.collateralPhotoFront && <div className="border border-gray-300 p-2" style={{ pageBreakInside: 'avoid' }}><p className="font-bold text-xs mb-1 text-center">FRONT VIEW</p><img src={formData.collateralPhotoFront} className="w-full h-40 object-contain" /></div>}
@@ -420,7 +428,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                 <input type="number" name="principal" value={principal || ""} onChange={(e) => setPrincipal(Number(e.target.value))} className="w-full bg-black border border-zinc-800 rounded p-2 text-white text-sm" placeholder="e.g. 5000" required min="100" />
               </div>
               
-              {/* 🚀 UPGRADE: Manual Rate Controls */}
               <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-[#1c1c21] rounded border border-zinc-800 mt-2">
                  <div>
                    <label className="text-[10px] text-red-400 font-bold uppercase tracking-widest block mb-1">Official Rate (%)</label>
@@ -449,9 +456,15 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                 <span className="text-zinc-400 text-sm">Payment Schedule:</span>
                 <span className="text-emerald-400 font-bold">{termType === 'Days' ? 'Daily' : termType === 'Weeks' ? 'Weekly' : 'Monthly'} Payments</span>
               </div>
+              
+              {/* 🧠 AI OPTIMIZER UI UPDATED HERE */}
               <div className="flex justify-between items-center mb-2">
                 <span className="text-zinc-400 text-sm">Optimal Duration:</span>
-                <span className="text-emerald-400 font-bold">{optimalDuration} {termType.slice(0, -1)}{optimalDuration > 1 ? 's' : ''}</span>
+                {isAIOptimizing ? (
+                  <span className="text-[10px] text-cyan-400 font-black animate-pulse flex items-center gap-1">🧠 Optimizing...</span>
+                ) : (
+                  <span className="text-emerald-400 font-bold">{optimalDuration} {termType.slice(0, -1)}{optimalDuration > 1 ? 's' : ''}</span>
+                )}
               </div>
               
               <div className="border-t border-zinc-700 pt-3 mt-3">
@@ -627,10 +640,6 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
                 <ol className="list-decimal pl-5 space-y-2 break-words">
                   <li className="break-words">
                     <strong>INTERES AT GOOD PAYER DISCOUNT:</strong> Ang opisyal na flat-rate interest ng utang na ito ay <strong className="text-amber-400">{manualOfficialRate}%</strong>. PERO, kung ang NANGUTANG ay magbabayad ng tama sa oras sa lahat ng kanyang iskedul, siya ay bibigyan ng <strong className="text-emerald-400">{Math.round(manualOfficialRate - manualDiscountedRate)}% Good Payer Discount</strong> (kaya magiging {manualDiscountedRate}% na lamang ang epektibong interes). 
-                    <br/>
-                    <span className="text-zinc-400 text-[11px] italic mt-1 block">
-                      (Simpleng paliwanag: Kung palagi kang on-time, {manualDiscountedRate}% lang ang tubo ng utang mo. Pero kapag na-late ka kahit isang araw sa iyong hulog, ma-vo-void ang discount at sisingilin ka ng buong {manualOfficialRate}% interes para sa buong kontrata.)
-                    </span>
                   </li>
                   <li className="break-words">
                     <strong>LOAN EXTENSION (ROLLOVER):</strong> Kung sakaling matapos ang kontrata at hindi pa kayang bayaran ng buo ang utang, ang NANGUTANG ay maaaring humingi ng palugit (Rollover). Upang ma-extend ang utang, kailangang magbayad ng <strong className="text-amber-400">Extension Fee</strong> na katumbas ng {manualDiscountedRate}% ng orihinal na Principal.
@@ -656,8 +665,8 @@ export default function ApplyFormClient({ agents, portfolios }: ApplyFormClientP
             </div>
           </div>
 
-          <button type="submit" disabled={status !== ""} className="w-full bg-[#00df82] border border-[#00df82]/40 text-[#09090b] py-5 font-black text-xs tracking-widest uppercase hover:bg-[#00df82]/80 disabled:opacity-50 rounded-xl transition-colors shadow-[0_0_20px_rgba(0,223,130,0.15)]">
-            {status || "SUBMIT APPLICATION"}
+          <button type="submit" disabled={status !== "" || isAIOptimizing} className="w-full bg-[#00df82] border border-[#00df82]/40 text-[#09090b] py-5 font-black text-xs tracking-widest uppercase hover:bg-[#00df82]/80 disabled:opacity-50 rounded-xl transition-colors shadow-[0_0_20px_rgba(0,223,130,0.15)]">
+            {status || (isAIOptimizing ? "🧠 OPTIMIZING TERMS..." : "SUBMIT APPLICATION")}
           </button>
         </form>
       </div>
