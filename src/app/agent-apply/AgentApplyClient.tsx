@@ -1,540 +1,236 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { deleteAgentRecord } from "./actions"; 
+import { useState, useRef, useEffect } from "react";
 
-interface Agent {
-  id: number;
-  name: string;
-  phone: string;
-  activeLoans: number;
-  totalExposure: number;
-  pendingCommission: number;
-  commissionsCount: number;
-  username?: string | null;
-  pin?: string | null;
-  isLocked?: boolean;
-}
-
-interface AgentDossier {
-  id: number;
-  name: string;
-  phone: string;
-  createdAt: string;
-  portfolio: string;
-  username?: string | null;
-  pin?: string | null;
-  isLocked?: boolean;
-  totalLifetimeEarnings: number;
-  pendingPayout: number;
-  commissionsCount: number;
-  pendingCommissionsCount: number;
-  totalRiskLiability: number;
-  activeLoansCount: number;
-  activeClients: Array<{
-    loanId: number;
-    clientId: number;
-    clientName: string;
-    originalPrincipal: number;
-    remainingBalance: number;
-    nextDueDate: string | null;
-    nextDueAmount: number | null;
-    statusColor: string;
-  }>;
-}
-
-interface AgentsResponse {
-  agents: Agent[];
-  portfolio: string;
-}
-
-const formatCurrency = (value: number) => {
-  return `₱${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-
-const formatDate = (dateStr: string | null) => {
-  if (!dateStr) return "N/A";
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
+export default function AgentApplyClient() {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedAssetType, setSelectedAssetType] = useState("");
+  
+  const [uploads, setUploads] = useState({
+    idCard: null as File | null, selfie: null as File | null,
+    collatFront: null as File | null, collatRear: null as File | null,
+    collatLeft: null as File | null, collatRight: null as File | null,
+    collatSerial: null as File | null, collatDoc: null as File | null,
   });
-};
 
-export default function AgentsClient() {
-  const [data, setData] = useState<AgentsResponse | null>(null);
-  const [pendingApps, setPendingApps] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"ACTIVE" | "PENDING">("ACTIVE");
-
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
-  const [dossier, setDossier] = useState<AgentDossier | null>(null);
-  const [loadingDossier, setLoadingDossier] = useState(false);
-  const [deletingAgentId, setDeletingAgentId] = useState<number | null>(null); 
-
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const [settlingAgentId, setSettlingAgentId] = useState<number | null>(null);
-
-  const [generatingCredentials, setGeneratingCredentials] = useState(false);
-  const [togglingLock, setTogglingLock] = useState(false);
-  const [showCredentials, setShowCredentials] = useState(false);
-
-  const fetchData = async () => {
-    try {
-      const [agentsRes, pendingRes] = await Promise.all([
-        fetch('/api/agents').then(res => res.json()),
-        fetch('/api/agents/pending').then(res => res.json())
-      ]);
-      
-      if (agentsRes.error) setError(agentsRes.error);
-      else setData(agentsRes);
-
-      if (pendingRes.success) setPendingApps(pendingRes.data);
-      
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchDossier = async (agentId: number) => {
-    setLoadingDossier(true);
-    try {
-      const res = await fetch(`/api/agents/dossier?agentId=${agentId}`);
-      const json = await res.json();
-      if (json.error) {
-        console.error(json.error);
-      } else {
-        setDossier(json.dossier);
-      }
-    } catch (e: any) {
-      console.error(e.message);
-    } finally {
-      setLoadingDossier(false);
-    }
-  };
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) { ctx.strokeStyle = "white"; ctx.lineWidth = 3; ctx.lineCap = "round"; }
+    }
   }, []);
 
-  useEffect(() => {
-    if (selectedAgentId) fetchDossier(selectedAgentId);
-    else setDossier(null);
-  }, [selectedAgentId]);
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault(); setIsDrawing(true);
+    const canvas = canvasRef.current; const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    ctx.beginPath(); ctx.moveTo(clientX - rect.left, clientY - rect.top);
+  };
 
-  const handleCreateAgent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newName.trim()) return;
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return; e.preventDefault();
+    const canvas = canvasRef.current; const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    ctx.lineTo(clientX - rect.left, clientY - rect.top); ctx.stroke();
+  };
 
-    setSubmitting(true);
+  const stopDrawing = () => setIsDrawing(false);
+  const clearSignature = () => {
+    const canvas = canvasRef.current; const ctx = canvas?.getContext("2d");
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleFileChange = (key: keyof typeof uploads, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploads(prev => ({ ...prev, [key]: e.target.files![0] }));
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image(); img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 800; let width = img.width; let height = img.height;
+          if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d"); ctx?.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.7));
+        };
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); setIsSubmitting(true);
     try {
-      const res = await fetch('/api/agents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, phone: newPhone })
+      const formData = new FormData(e.currentTarget);
+      const signatureData = canvasRef.current?.toDataURL();
+      const phoneNum = formData.get("phone") as string;
+
+      const payload = {
+        firstName: formData.get("firstName"), lastName: formData.get("lastName"),
+        phone: phoneNum, fbProfileUrl: formData.get("fbProfileUrl"),
+        address: formData.get("address"), incomeSource: formData.get("incomeSource"),
+        grossIncome: formData.get("grossIncome"), assetType: formData.get("assetType"),
+        customAssetType: formData.get("customAssetType"), assetValue: formData.get("assetValue"),
+        assetSpecs: formData.get("assetSpecs"), signatureData: signatureData,
+        idCardData: uploads.idCard ? await fileToBase64(uploads.idCard) : "",
+        selfieData: uploads.selfie ? await fileToBase64(uploads.selfie) : "",
+        collatFront: uploads.collatFront ? await fileToBase64(uploads.collatFront) : "",
+        collatRear: uploads.collatRear ? await fileToBase64(uploads.collatRear) : "",
+        collatLeft: uploads.collatLeft ? await fileToBase64(uploads.collatLeft) : "",
+        collatRight: uploads.collatRight ? await fileToBase64(uploads.collatRight) : "",
+        collatSerial: uploads.collatSerial ? await fileToBase64(uploads.collatSerial) : "",
+        collatDoc: uploads.collatDoc ? await fileToBase64(uploads.collatDoc) : "",
+      };
+
+      const res = await fetch("/api/agent-apply", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
+      const data = await res.json();
 
-      if (res.ok) {
-        setNewName("");
-        setNewPhone("");
-        fetchData();
-      } else {
-        const json = await res.json();
-        alert(json.error || "Failed to create agent");
-      }
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSubmitting(false);
+      if (data.success) {
+        // 🚀 Redirects perfectly to the new receipt page!
+        window.location.href = `/agent-apply/receipt?phone=${encodeURIComponent(phoneNum)}`;
+      } else { alert("Failed: " + data.error); setIsSubmitting(false); }
+    } catch (err: any) {
+      alert("Network Error"); setIsSubmitting(false);
     }
   };
 
-  const handleSettlePayout = async (agentId: number) => {
-    if (!confirm("Settle and payout all pending commissions for this agent?")) return;
-
-    setSettlingAgentId(agentId);
-    try {
-      const res = await fetch('/api/agents/settle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId })
-      });
-
-      const json = await res.json();
-      if (json.success) {
-        alert(`Settled ${json.settledCount} commissions. Total payout: ${formatCurrency(json.totalPayout)}`);
-        fetchData();
-        if (selectedAgentId === agentId) fetchDossier(agentId);
-      } else {
-        alert(json.error || "Failed to settle commissions");
-      }
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSettlingAgentId(null);
-    }
-  };
-
-  const handleGenerateCredentials = async (agentId: number) => {
-    if (!confirm("Generate new login credentials for this agent? This will overwrite any existing credentials.")) return;
-
-    setGeneratingCredentials(true);
-    try {
-      const res = await fetch('/api/agents/credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId })
-      });
-
-      const json = await res.json();
-      if (json.success) {
-        alert(`Credentials generated!\n\nUsername: ${json.agent.username}\nPIN: ${json.agent.pin}\n\nPlease share these credentials securely with the agent.`);
-        fetchDossier(agentId);
-        fetchData();
-      } else {
-        alert(json.error || "Failed to generate credentials");
-      }
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setGeneratingCredentials(false);
-    }
-  };
-
-  const handleToggleLock = async (agentId: number, currentLockStatus: boolean) => {
-    const action = currentLockStatus ? "unlock" : "lock";
-    if (!confirm(`Are you sure you want to ${action} this agent?`)) return;
-
-    setTogglingLock(true);
-    try {
-      const res = await fetch('/api/agents/lock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, isLocked: !currentLockStatus })
-      });
-
-      const json = await res.json();
-      if (json.success) {
-        alert(`Agent ${action}ed successfully!`);
-        fetchDossier(agentId);
-        fetchData();
-      } else {
-        alert(json.error || `Failed to ${action} agent`);
-      }
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setTogglingLock(false);
-    }
-  };
-
-  const handleProcessApplication = async (id: number, action: "APPROVE" | "REJECT") => {
-    if (!confirm(`Are you sure you want to ${action} this application?`)) return;
-    
-    try {
-      const res = await fetch("/api/agents/pending", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action })
-      });
-      if (res.ok) {
-        alert(`Application ${action}D successfully.`);
-        fetchData(); 
-      }
-    } catch (error) {
-      alert("Error processing application.");
-    }
-  };
-
-  const handleDeleteAgent = async (agentId: number, agentName: string) => {
-    if (!confirm(`WARNING: You are about to eradicate Agent ${agentName} from the fleet.\n\nThis will permanently delete their commission ledgers and remove them as Co-Maker from all associated loans.\n\nProceed?`)) return;
-    if (!confirm(`FINAL WARNING: This action CANNOT BE UNDONE. Execute Agent Eradication?`)) return;
-
-    setDeletingAgentId(agentId);
-    try {
-      const res = await deleteAgentRecord(agentId);
-      if (res.success) {
-        setSelectedAgentId(null);
-        setDossier(null);
-        fetchData();
-      } else {
-        alert(`Eradication Failed: ${res.error}`);
-      }
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setDeletingAgentId(null);
-    }
-  };
-
-  if (loading) return <div className="max-w-4xl mx-auto p-4 flex items-center justify-center min-h-[60vh]"><div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div></div>;
-  if (error) return <div className="max-w-4xl mx-auto p-4 flex items-center justify-center min-h-[60vh] text-red-400">{error}</div>;
+  const FileButton = ({ fileKey, label, icon }: { fileKey: keyof typeof uploads, label: string, icon: string }) => (
+    <label className={`flex flex-col items-center justify-center p-4 border border-dashed rounded-xl cursor-pointer transition-colors ${uploads[fileKey] ? 'bg-emerald-950/30 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
+      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileChange(fileKey, e)} />
+      <span className="text-2xl mb-2">{uploads[fileKey] ? '✅' : icon}</span>
+      <span className="text-[10px] font-bold uppercase text-center">{uploads[fileKey] ? 'Captured' : label}</span>
+    </label>
+  );
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-6 pb-20">
-      
-      <div className="flex justify-between items-center pt-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Agent Command Center</h1>
-          <p className="text-sm text-zinc-500">Portfolio: <span className="text-yellow-400">{data?.portfolio}</span></p>
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8 pb-24">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="text-center mb-10">
+          <h1 className="text-2xl md:text-3xl font-black text-white tracking-widest uppercase">Agent & Co-Maker<span className="block text-emerald-500">Official Application</span></h1>
         </div>
-        <Link href="/" className="text-sm text-blue-400 hover:underline">← Dashboard</Link>
-      </div>
 
-      <div className="flex gap-2 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
-        <button onClick={() => setActiveTab("ACTIVE")} className={`flex-1 py-3 text-sm font-bold uppercase rounded-lg transition-all ${activeTab === "ACTIVE" ? "bg-amber-500 text-black" : "text-zinc-500 hover:text-zinc-300"}`}>
-          Active Fleet ({data?.agents.length || 0})
-        </button>
-        <button onClick={() => setActiveTab("PENDING")} className={`flex-1 py-3 text-sm font-bold uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === "PENDING" ? "bg-emerald-500 text-black" : "text-zinc-500 hover:text-zinc-300"}`}>
-          Pending Recruits {pendingApps.length > 0 && <span className="bg-rose-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingApps.length}</span>}
-        </button>
-      </div>
-
-      {activeTab === "PENDING" && (
-        <div className="space-y-4">
-          {pendingApps.length === 0 ? (
-            <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center text-zinc-500">No pending agent applications.</div>
-          ) : (
-            pendingApps.map((app) => (
-              <div key={app.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-xl">
-                <div className="flex justify-between items-start border-b border-zinc-800 pb-4 mb-4">
-                  <div>
-                    <h3 className="text-lg font-black text-white uppercase">{app.firstName} {app.lastName}</h3>
-                    <p className="text-xs text-zinc-400 mt-1">{app.phone} • {app.address}</p>
-                  </div>
-                  <span className="bg-zinc-800 text-zinc-400 text-xs px-2 py-1 rounded font-mono">ID: {app.id}</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div className="space-y-2 text-sm">
-                    <p className="text-zinc-500 text-xs font-bold uppercase">Operational Capacity</p>
-                    <p className="text-white"><span className="text-zinc-400">Employment:</span> {app.employment || 'N/A'}</p>
-                    <p className="text-emerald-400 font-bold"><span className="text-zinc-400 font-normal">Territory:</span> {app.territory || 'N/A'}</p>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <p className="text-purple-400 text-xs font-bold uppercase">Pledged Collateral</p>
-                    <p className="text-white"><span className="text-zinc-400">Type:</span> {app.collateralType || 'N/A'}</p>
-                    <p className="text-purple-400 font-bold"><span className="text-zinc-400 font-normal">Value:</span> ₱{(app.collateralValue || 0).toLocaleString()}</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 mb-6">
-                   {app.idPhotoUrl && (
-                     <div className="flex-1">
-                       <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">ID Card</p>
-                       <img src={app.idPhotoUrl} alt="ID" className="h-16 w-full object-cover rounded border border-zinc-700 opacity-50 hover:opacity-100 transition-opacity cursor-pointer" />
-                     </div>
-                   )}
-                   {app.selfieUrl && (
-                     <div className="flex-1">
-                       <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">Selfie</p>
-                       <img src={app.selfieUrl} alt="Selfie" className="h-16 w-full object-cover rounded border border-zinc-700 opacity-50 hover:opacity-100 transition-opacity cursor-pointer" />
-                     </div>
-                   )}
-                   {app.digitalSignature && (
-                     <div className="flex-1">
-                       <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">Signature</p>
-                       <img src={app.digitalSignature} alt="Signature" style={{ filter: 'invert(1)' }} className="h-16 w-full object-contain rounded border border-zinc-700 bg-white" />
-                     </div>
-                   )}
-                </div>
-
-                <div className="flex gap-3">
-                  <button onClick={() => handleProcessApplication(app.id, "REJECT")} className="flex-1 py-3 bg-zinc-800 hover:bg-rose-900/50 text-rose-400 border border-zinc-700 hover:border-rose-500 rounded-xl font-bold text-sm uppercase transition-colors">Reject</button>
-                  <button onClick={() => handleProcessApplication(app.id, "APPROVE")} className="flex-[2] py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm uppercase transition-colors">Approve & Hire Agent</button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {activeTab === "ACTIVE" && (
-        <>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
-            <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Select Agent for Master Dossier</h2>
-            <select
-              value={selectedAgentId || ""}
-              onChange={(e) => setSelectedAgentId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-4 text-white font-bold text-lg focus:outline-none focus:border-blue-500"
-            >
-              <option value="">-- Select an Agent --</option>
-              {data?.agents.map(agent => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name} {agent.phone ? `(${agent.phone})` : ''} - {agent.activeLoans} active loans
-                </option>
-              ))}
-            </select>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* 1 & 2. PERSONAL & FINANCIAL */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800"><h2 className="text-sm font-black text-white uppercase tracking-widest">1. Personal & Financial Matrix</h2></div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">First Name</label><input required name="firstName" type="text" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+              <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Last Name</label><input required name="lastName" type="text" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+              <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Phone</label><input required name="phone" type="tel" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+              <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Facebook URL</label><input required name="fbProfileUrl" type="url" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Complete Address</label><textarea required name="address" rows={2} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"></textarea></div>
+              <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Primary Income Source</label><input required name="incomeSource" placeholder="e.g. Call Center Agent, Sari-Sari Store" type="text" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+              <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Gross Monthly Income (₱)</label><input required name="grossIncome" type="number" placeholder="e.g. 25000" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+            </div>
           </div>
 
-          {selectedAgentId && (
-            loadingDossier ? (
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
-                <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-zinc-400">Loading dossier...</p>
-              </div>
-            ) : dossier ? (
-              <div className="space-y-6">
-                
-                <div className={`bg-zinc-900 border rounded-2xl p-6 shadow-xl ${dossier.isLocked ? 'border-rose-500/50' : 'border-zinc-800'}`}>
-                  <h2 className="text-sm font-bold text-purple-400 uppercase tracking-wider mb-4">🔐 Authentication & Access Control</h2>
-                  {dossier.isLocked && (
-                    <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">🔒</span>
-                        <div>
-                          <p className="text-rose-400 font-bold">ACCOUNT LOCKED</p>
-                          <p className="text-xs text-rose-300">This agent cannot access the portal</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {dossier.username ? (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-zinc-800 rounded-xl p-4">
-                          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Username</p>
-                          <p className="text-lg font-mono font-bold text-emerald-400">{dossier.username}</p>
-                        </div>
-                        <div className="bg-zinc-800 rounded-xl p-4">
-                          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">PIN</p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-lg font-mono font-bold text-emerald-400">
-                              {showCredentials ? dossier.pin : '••••••'}
-                            </p>
-                            <button onClick={() => setShowCredentials(!showCredentials)} className="text-zinc-400 hover:text-white text-sm">
-                              {showCredentials ? '🙈' : '👁️'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <button onClick={() => handleGenerateCredentials(dossier.id)} disabled={generatingCredentials} className="flex-1 py-3 rounded-xl font-bold uppercase tracking-wider transition-all bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50">
-                          {generatingCredentials ? "Regenerating..." : "🔄 Regenerate Credentials"}
-                        </button>
-                        <button onClick={() => handleToggleLock(dossier.id, dossier.isLocked || false)} disabled={togglingLock} className={`flex-1 py-3 rounded-xl font-bold uppercase tracking-wider transition-all ${dossier.isLocked ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-rose-600 hover:bg-rose-500 text-white'} disabled:opacity-50`}>
-                          {togglingLock ? "Processing..." : dossier.isLocked ? "🔓 Unlock Agent" : "🔒 Lock Agent"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className="text-zinc-500 mb-4">No credentials generated yet</p>
-                      <button onClick={() => handleGenerateCredentials(dossier.id)} disabled={generatingCredentials} className="px-6 py-3 rounded-xl font-bold uppercase tracking-wider transition-all bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white disabled:opacity-50">
-                        {generatingCredentials ? "Generating..." : "🔑 Generate Login Credentials"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl relative">
-                  
-                  {/* 🚀 THE FIX: Pointing strictly to agent-apply/receipt */}
-                  <div className="absolute top-4 right-4">
-                     <Link href={`/agent-apply/receipt?phone=${dossier.phone}`} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all border border-emerald-400/50">
-                       📄 View PDF Contract
-                     </Link>
-                  </div>
-
-                  <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Card 1: Agent Identity</h2>
-                  <div className="grid grid-cols-3 gap-4 mt-8">
-                    <div>
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Agent Name</p>
-                      <p className="text-2xl font-bold text-white">{dossier.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Phone</p>
-                      <p className="text-2xl font-bold text-white">{dossier.phone || "N/A"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Date Registered</p>
-                      <p className="text-lg font-bold text-white">{formatDate(dossier.createdAt)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 pt-6 border-t border-zinc-800 flex justify-end">
-                    <button 
-                      onClick={() => handleDeleteAgent(dossier.id, dossier.name)} 
-                      disabled={deletingAgentId === dossier.id}
-                      className="bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-50"
-                    >
-                      {deletingAgentId === dossier.id ? "⏳ Eradicating..." : "🗑️ Eradicate Agent"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl">
-                  <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Card 2: 60/40 Commission Ledger</h2>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-zinc-800 rounded-xl p-4">
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Total Lifetime Earnings</p>
-                      <p className="text-3xl font-bold text-emerald-400">{formatCurrency(dossier.totalLifetimeEarnings)}</p>
-                      <p className="text-xs text-zinc-500 mt-1">{dossier.commissionsCount} total commissions</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-xl p-4">
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Pending Payout</p>
-                      <p className="text-3xl font-bold text-amber-400">{formatCurrency(dossier.pendingPayout)}</p>
-                      <p className="text-xs text-zinc-500 mt-1">{dossier.pendingCommissionsCount} pending transactions</p>
-                    </div>
-                  </div>
-                  <button onClick={() => handleSettlePayout(dossier.id)} disabled={dossier.pendingPayout === 0 || settlingAgentId !== null} className={`w-full py-3 rounded-xl font-bold uppercase tracking-wider transition-all ${dossier.pendingPayout > 0 ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}>
-                    {settlingAgentId === dossier.id ? "Processing..." : dossier.pendingPayout > 0 ? `Settle Payout - ${formatCurrency(dossier.pendingPayout)}` : "No Pending Payout"}
-                  </button>
-                </div>
-
-                <div className="bg-zinc-900 border border-rose-500/30 rounded-2xl p-6 shadow-xl">
-                  <h2 className="text-sm font-bold text-rose-400 uppercase tracking-wider mb-4">Card 3: Co-Maker Liability (CRITICAL)</h2>
-                  <div className="bg-rose-500/10 rounded-xl p-4 mb-4">
-                    <p className="text-xs text-zinc-400 uppercase tracking-wider mb-1">Total Risk / Liability</p>
-                    <p className="text-4xl font-bold text-rose-500">{formatCurrency(dossier.totalRiskLiability)}</p>
-                    <p className="text-xs text-zinc-400 mt-2">This is what the agent owes the House if all their clients default.</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-zinc-800 rounded-xl p-4">
-                      <p className="text-xs text-zinc-500 uppercase">Active Loans</p>
-                      <p className="text-2xl font-bold text-white">{dossier.activeLoansCount}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-xl p-4">
-                      <p className="text-xs text-zinc-500 uppercase">Active Clients</p>
-                      <p className="text-2xl font-bold text-white">{dossier.activeClients.length}</p>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            ) : null
-          )}
-
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl mt-6">
-            <h2 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">Register New Agent</h2>
-            <form onSubmit={handleCreateAgent} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs text-zinc-500 uppercase mb-1">Agent Name</label>
-                <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Full name" required className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-500 uppercase mb-1">Phone Number</label>
-                <input type="text" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="09xx xxx xxxx" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500" />
-              </div>
-              <div className="flex items-end">
-                <button type="submit" disabled={submitting} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white font-bold py-3 rounded-xl transition-colors uppercase tracking-wider">
-                  {submitting ? "Registering..." : "Add Agent"}
-                </button>
-              </div>
-            </form>
+          {/* 3. IDENTITY VERIFICATION */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800"><h2 className="text-sm font-black text-cyan-400 uppercase tracking-widest">2. Identity Verification</h2></div>
+            <div className="p-6 grid grid-cols-2 gap-4">
+              <FileButton fileKey="idCard" label="Snap Valid ID" icon="🪪" />
+              <label className={`flex flex-col items-center justify-center p-4 border border-dashed rounded-xl cursor-pointer transition-colors ${uploads.selfie ? 'bg-cyan-950/30 border-cyan-500 text-cyan-400' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
+                <input required type="file" accept="image/*" capture="user" className="hidden" onChange={(e) => handleFileChange('selfie', e)} />
+                <span className="text-2xl mb-2">{uploads.selfie ? '✅' : '🤳'}</span>
+                <span className="text-[10px] font-bold uppercase text-center">{uploads.selfie ? 'Selfie Captured' : 'Take Selfie with ID'}</span>
+              </label>
+            </div>
           </div>
 
-        </>
-      )}
+          {/* 4. COLLATERAL DECLARATION */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800"><h2 className="text-sm font-black text-purple-400 uppercase tracking-widest">3. Collateral Declaration</h2></div>
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Asset Type</label>
+                  <select required name="assetType" value={selectedAssetType} onChange={(e) => setSelectedAssetType(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white">
+                    <option value="">Select Category...</option>
+                    <option value="Motorcycle / Scooter">Motorcycle / Scooter</option>
+                    <option value="Car / SUV">Car / SUV</option>
+                    <option value="Tricycle / E-Bike">Tricycle / E-Bike</option>
+                    <option value="Land Title (TCT)">Land Title (TCT)</option>
+                    <option value="House & Lot">House & Lot</option>
+                    <option value="Laptop / MacBook">Laptop / MacBook</option>
+                    <option value="Smartphone / iPhone">Smartphone / iPhone</option>
+                    <option value="Jewelry / Gold">Jewelry / Watches / Gold</option>
+                    <option value="Appliances">Appliances (TV, Fridge, etc.)</option>
+                    <option value="Other">Other (Specify Below)</option>
+                  </select>
+                </div>
+                <div><label className="block text-xs font-bold text-slate-400 uppercase mb-2">Estimated Value (₱)</label><input required name="assetValue" type="number" placeholder="e.g. 150000" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white" /></div>
+              </div>
+
+              {selectedAssetType === "Other" && (
+                <div>
+                  <label className="block text-xs font-bold text-purple-400 uppercase mb-2">Specify Nature of Collateral</label>
+                  <input required name="customAssetType" type="text" placeholder="e.g. Heavy Machinery, Carabao, Farm Equipment" className="w-full bg-slate-950 border border-purple-500 rounded-xl p-3 text-white" />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Specifications & Condition (Be Specific)</label>
+                <textarea required name="assetSpecs" rows={3} placeholder="EXAMPLE: Honda Click 125i 2023, Color Black. Plate No: 123ABC. Engine in perfect condition, minor scratches on the left fairing." className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white placeholder:text-slate-600"></textarea>
+              </div>
+
+              {/* 6-POINT CAMERA ARRAY */}
+              <div className="pt-4 border-t border-slate-800">
+                 <label className="block text-xs font-bold text-slate-400 uppercase mb-4 text-center">6-Point Photographic Inspection</label>
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <FileButton fileKey="collatFront" label="Front View" icon="📸" />
+                    <FileButton fileKey="collatRear" label="Rear View" icon="📸" />
+                    <FileButton fileKey="collatLeft" label="Left Side" icon="📸" />
+                    <FileButton fileKey="collatRight" label="Right Side" icon="📸" />
+                    <FileButton fileKey="collatSerial" label="Serial / Plate No." icon="🔍" />
+                    <FileButton fileKey="collatDoc" label="ORCR / Receipt / Title" icon="📄" />
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 5. BINDING SIGNATURE */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="bg-slate-800/50 px-6 py-4 border-b border-slate-800"><h2 className="text-sm font-black text-rose-400 uppercase tracking-widest">4. Binding Signature</h2></div>
+            <div className="p-6 space-y-6">
+              <label className="flex items-start gap-4 p-3 bg-slate-950 rounded-xl border border-slate-800 cursor-pointer">
+                <input required type="checkbox" className="w-5 h-5 mt-0.5 accent-rose-500 rounded" />
+                <span className="text-xs md:text-sm text-slate-300 font-medium">I swear all info is true and I assume all liability as Co-Maker.</span>
+              </label>
+              <div className="pt-6 border-t border-slate-800">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Digital Signature (Draw Below)</label>
+                  <div className="w-full bg-slate-950 border-2 border-slate-700 rounded-xl overflow-hidden relative touch-none">
+                    <canvas ref={canvasRef} width={400} height={200} className="w-full h-[200px] cursor-crosshair" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
+                  </div>
+                  <button type="button" onClick={clearSignature} className="mt-2 text-xs text-rose-400 hover:text-rose-300 font-bold uppercase underline">Clear Signature</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4">
+            <button type="submit" disabled={isSubmitting} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest py-5 rounded-2xl shadow-lg transition-all text-sm md:text-base">
+              {isSubmitting ? "Encrypting to Vault..." : "Submit Binding Application"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
-
