@@ -5,41 +5,20 @@ import { createPortal } from "react-dom";
 
 export default function ApplyLinksTrigger({ portfolios = [] }: { portfolios: any[] }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleCopy = (portfolioName: string, isAgentLink: boolean = false) => {
-    // 🚀 INJECT THE PORTFOLIO DIRECTLY INTO THE URL
+  // 🚀 UPGRADED: Now launches directly into a new secure tab!
+  const handleOpenLink = (portfolioName: string, isAgentLink: boolean = false) => {
     const encodedPortfolio = encodeURIComponent(portfolioName);
     const link = isAgentLink 
       ? `${window.location.origin}/agent-apply?portfolio=${encodedPortfolio}` 
       : `${window.location.origin}/apply?portfolio=${encodedPortfolio}`;
     
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(link);
-    } else {
-        const textArea = document.createElement("textarea");
-        textArea.value = link;
-        textArea.style.position = "absolute";
-        textArea.style.left = "-999999px";
-        document.body.prepend(textArea);
-        textArea.select();
-        try {
-            document.execCommand('copy');
-        } catch (error) {
-            console.error(error);
-        } finally {
-            textArea.remove();
-        }
-    }
-    
-    const uniqueId = `${portfolioName}-${isAgentLink ? 'agent' : 'client'}`;
-    setCopiedId(uniqueId);
-    setTimeout(() => setCopiedId(null), 2000);
+    window.open(link, '_blank', 'noopener,noreferrer');
   };
 
   const modalContent = (
@@ -57,30 +36,34 @@ export default function ApplyLinksTrigger({ portfolios = [] }: { portfolios: any
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {/* CLIENT LINK */}
                   <button
-                    onClick={() => handleCopy(p.name, false)}
+                    onClick={() => handleOpenLink(p.name, false)}
                     style={{
                       flex: 1, padding: '8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', border: 'none',
-                      backgroundColor: copiedId === `${p.name}-client` ? '#059669' : '#2563eb', color: 'white'
+                      backgroundColor: '#2563eb', color: 'white', transition: 'opacity 0.2s'
                     }}
+                    onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                    onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
                   >
-                    {copiedId === `${p.name}-client` ? '✓ Copied' : '👥 Client Link'}
+                    👥 Client Link ↗
                   </button>
 
                   {/* AGENT LINK */}
                   <button
-                    onClick={() => handleCopy(p.name, true)}
+                    onClick={() => handleOpenLink(p.name, true)}
                     style={{
                       flex: 1, padding: '8px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', border: 'none',
-                      backgroundColor: copiedId === `${p.name}-agent` ? '#059669' : '#9333ea', color: 'white'
+                      backgroundColor: '#9333ea', color: 'white', transition: 'opacity 0.2s'
                     }}
+                    onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                    onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
                   >
-                    {copiedId === `${p.name}-agent` ? '✓ Copied' : '⭐ Agent Link'}
+                    ⭐ Agent Link ↗
                   </button>
                 </div>
               </div>
             ))
           ) : (
-            <p style={{ color: '#71717a', fontSize: '14px', textAlign: 'center', padding: '16px 0' }}>No client portfolios available.</p>
+            <p style={{ color: '#71717a', fontSize: '14px', textAlign: 'center', padding: '16px 0' }}>No portfolios available.</p>
           )}
         </div>
 
@@ -106,7 +89,7 @@ export default function ApplyLinksTrigger({ portfolios = [] }: { portfolios: any
         className="flex flex-col items-center justify-center p-4 bg-zinc-800 hover:bg-zinc-700 rounded-xl border border-zinc-700 transition-all font-bold text-white tracking-wide cursor-pointer w-full h-full focus:outline-none"
       >
         <span className="text-2xl mb-1">🔗</span>
-        <span>Copy Apply Links</span>
+        <span>Open Apply Links</span>
       </button>
 
       {isModalOpen && mounted && createPortal(modalContent, document.body)}
