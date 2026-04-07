@@ -3,9 +3,14 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function AgentReceiptPage(props: { searchParams: Promise<{ phone?: string }> }) {
-  const searchParams = await props.searchParams;
-  const phone = searchParams?.phone;
+// 🚀 STRICT SHIELD: Universal compatibility for Next.js params
+type PageProps = {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }> | { [key: string]: string | string[] | undefined };
+};
+
+export default async function AgentReceiptPage(props: PageProps) {
+  const resolvedParams = await Promise.resolve(props.searchParams);
+  const phone = typeof resolvedParams?.phone === 'string' ? resolvedParams.phone : undefined;
 
   if (!phone) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: No phone number provided.</div>;
 
@@ -16,10 +21,14 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
 
   if (!app) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: Application not found or not approved.</div>;
 
+  // 🚀 HYDRATION SAFE: Strips timezone math entirely to prevent Japan vs USA server crashes
+  const currentDate = app.createdAt ? String(app.createdAt).substring(0, 15) : "N/A";
+  const safeBirthDate = app.birthDate ? String(app.birthDate).substring(0, 15) : "—";
+
   return (
     <div className="min-h-screen bg-[#09090b] p-8 print:bg-white print:p-0">
       
-      {/* NO-PRINT HEADER (For Admin UI) */}
+      {/* NO-PRINT HEADER */}
       <div className="print:hidden max-w-2xl mx-auto mb-8 flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-xl">
         <div>
           <h1 className="text-white font-bold">Master Contract Dossier</h1>
@@ -38,9 +47,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
         
         <div className="border-b-2 border-black pb-4 mb-6 text-center">
           <h1 className="text-3xl font-bold uppercase tracking-wider">Field Agent Binding Contract</h1>
-          <p className="text-sm text-gray-600 font-bold mt-1">
-            Division: <span className="text-black">{app.portfolio}</span> • Date: <span suppressHydrationWarning>{new Date(app.createdAt).toLocaleString()}</span>
-          </p>
+          <p className="text-sm text-gray-600 font-bold mt-1">Division: <span className="text-black">{app.portfolio}</span> • Date: {currentDate}</p>
         </div>
 
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">1. Agent Identity</h2>
@@ -48,7 +55,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
           <div className="font-semibold text-gray-600">Full Name:</div><div className="font-bold">{app.firstName} {app.lastName}</div>
           <div className="font-semibold text-gray-600">Phone:</div><div className="font-bold">{app.phone || '—'}</div>
           <div className="font-semibold text-gray-600">Address:</div><div className="font-bold">{app.address || '—'}</div>
-          <div className="font-semibold text-gray-600">Birth Date:</div><div suppressHydrationWarning className="font-bold">{app.birthDate ? new Date(app.birthDate).toLocaleDateString() : '—'}</div>
+          <div className="font-semibold text-gray-600">Birth Date:</div><div className="font-bold">{safeBirthDate}</div>
         </div>
         
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">2. Territory & Capacity</h2>
@@ -66,6 +73,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
           <div className="col-span-2 font-medium italic text-gray-700">{app.collateralCondition || '—'}</div>
         </div>
 
+        {/* 🚀 PUNCTUATION FIXED: The full Tagalog agreement, safe for Vercel compilation */}
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Responsibilidad (Agreement)</h2>
         <div className="text-sm mb-6 pl-2 text-gray-800 space-y-4 leading-relaxed">
           <p className="font-bold uppercase">Bilang Field Agent at Co-Maker, sumasang-ayon ako sa sumusunod:</p>
@@ -74,7 +82,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
             <h3 className="font-bold text-emerald-700 uppercase">✅ Mga Benepisyo (Pros)</h3>
             <ul className="list-disc pl-5 space-y-1">
               <li>Makakatanggap ako ng <strong>40% komisyon</strong> mula sa purong interes ng mga pautang na matagumpay kong nakolekta.</li>
-              <li>Walang limitasyon sa maaaring kitain basta't maayos ang paniningil at walang nade-default.</li>
+              <li>Walang limitasyon sa maaaring kitain basta&apos;t maayos ang paniningil at walang nade-default.</li>
             </ul>
           </div>
 
@@ -106,6 +114,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
           </div>
         )}
 
+        {/* PAGE 2: PHOTO GRID */}
         <div style={{ pageBreakBefore: 'always' }} className="pt-10">
           <h2 className="text-2xl font-bold text-black mb-2 text-center uppercase tracking-wider">Appendix A: Forensic Evidence</h2>
           <p className="text-sm text-gray-600 text-center mb-6 border-b-2 border-black pb-4 font-bold uppercase">Agent: {app.firstName} {app.lastName} • ID: {app.id}</p>
