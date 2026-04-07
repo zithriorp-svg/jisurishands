@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { calculateOptimalDurationWithAI } from "@/app/review/actions";
 
 interface AmortizationRow {
   period: number;
@@ -62,8 +63,6 @@ export default function LoanCalculator({
   preselectedAgentId
 }: LoanCalculatorProps) {
   const [principal, setPrincipal] = useState<number>(suggestedPrincipal);
-  
-  // 🚀 UPGRADE: Manual control for Official vs Discounted rates
   const [officialRate, setOfficialRate] = useState<number>(10);
   const [discountedRate, setDiscountedRate] = useState<number>(6);
 
@@ -71,6 +70,10 @@ export default function LoanCalculator({
   const [termType, setTermType] = useState<"Days" | "Weeks" | "Months">(
     (suggestedTermType as "Days" | "Weeks" | "Months") || "Months"
   );
+  
+  // 🚀 AI NEURAL LINK STATES
+  const [isAIOptimizing, setIsAIOptimizing] = useState(false);
+
   const [schedule, setSchedule] = useState<AmortizationRow[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [calculated, setCalculated] = useState(false);
@@ -82,41 +85,71 @@ export default function LoanCalculator({
   const [vaultCash, setVaultCash] = useState<number | null>(null);
   const [loadingVaultCash, setLoadingVaultCash] = useState(true);
 
+  // Fetch Agents
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/agents', { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        if (data.agents) {
-          setAgents(data.agents);
-        }
+        if (data.agents) setAgents(data.agents);
       })
       .catch(e => {
         if (e.name !== 'AbortError') console.error(e);
       })
       .finally(() => setLoadingAgents(false));
-
     return () => controller.abort();
   }, []);
 
+  // Fetch Vault Cash
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/vault-cash', { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        if (data.vaultCash !== undefined) {
-          setVaultCash(data.vaultCash);
-        }
+        if (data.vaultCash !== undefined) setVaultCash(data.vaultCash);
       })
       .catch(e => {
         if (e.name !== 'AbortError') console.error(e);
       })
       .finally(() => setLoadingVaultCash(false));
-
     return () => controller.abort();
   }, []);
 
-  // 🚀 MATH UPGRADE: Using the Discounted Rate for the actual amortization
+  // 🧠 GEMINI AI: AUTOMATIC DURATION OPTIMIZER
+  // This triggers automatically whenever Principal or TermType changes.
+  useEffect(() => {
+    const triggerAIOptimization = async () => {
+      // Don't trigger if principal is 0 or invalid
+      if (principal <= 0) return; 
+
+      setIsAIOptimizing(true);
+      setCalculated(false);
+      setShowSchedule(false);
+
+      try {
+        const response = await calculateOptimalDurationWithAI(principal, termType);
+        if (response.success && response.duration) {
+          // Snap the duration field to Gemini's optimal calculation
+          setTermDuration(response.duration);
+        } else {
+          console.warn("AI Optimization skipped or failed:", response.error);
+        }
+      } catch (error) {
+        console.error("Failed to connect to AI Engine:", error);
+      } finally {
+        setIsAIOptimizing(false);
+      }
+    };
+
+    // Debounce the call slightly so it doesn't spam the API while you are typing the principal amount
+    const timeoutId = setTimeout(() => {
+      triggerAIOptimization();
+    }, 800); 
+
+    return () => clearTimeout(timeoutId);
+  }, [principal, termType]); // 👈 Listens for changes in these two boxes
+
+
   const totalInterest = Number((principal * (discountedRate / 100)).toFixed(2));
   const totalRepayment = Number((principal + totalInterest).toFixed(2));
 
@@ -198,7 +231,7 @@ export default function LoanCalculator({
     const loanData: LoanDisbursementData = {
       applicationId,
       principal,
-      interestRate: discountedRate, // Passing the custom rate to the database
+      interestRate: discountedRate, 
       termDuration,
       termType,
       totalInterest,
@@ -257,13 +290,12 @@ export default function LoanCalculator({
           <input
             type="number"
             value={principal}
-            onChange={e => { setPrincipal(Number(e.target.value) || 0); setCalculated(false); setShowSchedule(false); }}
+            onChange={e => { setPrincipal(Number(e.target.value) || 0); }}
             className={`${inputStyle} mt-2 text-[#00df82] text-xl`}
             min="100"
           />
         </div>
 
-        {/* 🚀 UPGRADE: Editable Interest Rates */}
         <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-black/50 border border-[#2a2a35] rounded-xl">
           <div>
             <label className="text-[10px] text-red-400 font-black uppercase tracking-widest block mb-1">Official Rate (%)</label>
@@ -289,12 +321,16 @@ export default function LoanCalculator({
         </div>
 
         <div>
-          <label className={labelStyle}>Duration</label>
+          {/* 🚀 AI OPTIMIZATION UI NOTIFIER */}
+          <div className="flex justify-between items-center">
+             <label className={labelStyle}>Duration</label>
+             {isAIOptimizing && <span className="text-[10px] text-cyan-400 font-black animate-pulse flex items-center gap-1">🧠 Optimizing...</span>}
+          </div>
           <input
             type="number"
             value={termDuration}
             onChange={e => { setTermDuration(Number(e.target.value) || 1); setCalculated(false); setShowSchedule(false); }}
-            className={`${inputStyle} mt-2`}
+            className={`${inputStyle} mt-2 ${isAIOptimizing ? 'border-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : ''}`}
             min="1"
           />
         </div>
@@ -302,7 +338,7 @@ export default function LoanCalculator({
           <label className={labelStyle}>Term Type</label>
           <select
             value={termType}
-            onChange={e => { setTermType(e.target.value as "Days" | "Weeks" | "Months"); setCalculated(false); setShowSchedule(false); }}
+            onChange={e => { setTermType(e.target.value as "Days" | "Weeks" | "Months"); }}
             className={`${inputStyle} mt-2`}
           >
             <option value="Days">Daily Payments</option>
@@ -330,9 +366,10 @@ export default function LoanCalculator({
       <button
         type="button"
         onClick={calculateSchedule}
-        className="w-full bg-[#1c1c21] border-2 border-[#2a2a35] text-white py-3 font-bold text-sm uppercase tracking-widest rounded-xl hover:border-[#00df82] hover:text-[#00df82] transition-colors print:hidden"
+        disabled={isAIOptimizing}
+        className="w-full bg-[#1c1c21] border-2 border-[#2a2a35] text-white py-3 font-bold text-sm uppercase tracking-widest rounded-xl hover:border-[#00df82] hover:text-[#00df82] transition-colors disabled:opacity-50 print:hidden"
       >
-        📊 Calculate Schedule
+        {isAIOptimizing ? "🧠 AI Calculating..." : "📊 Calculate Schedule"}
       </button>
 
       {showSchedule && schedule.length > 0 && (
@@ -377,7 +414,7 @@ export default function LoanCalculator({
         <button
           type="button"
           onClick={handleDisburse}
-          disabled={!calculated || isProcessing || insufficientLiquidity}
+          disabled={!calculated || isProcessing || insufficientLiquidity || isAIOptimizing}
           className="flex-1 bg-[#00df82] text-[#09090b] font-black py-4 rounded-xl hover:bg-[#00df82]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(0,223,130,0.2)]"
         >
           {isProcessing ? "Processing..." : insufficientLiquidity ? "⛔ NO FUNDS" : "✓ DISBURSE LOAN"}
@@ -394,4 +431,3 @@ export default function LoanCalculator({
     </div>
   );
 }
-
