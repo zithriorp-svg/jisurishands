@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { calculateOptimalDurationWithAI } from "@/app/review/actions"; // 🧠 Pulls the AI Engine we built earlier!
 
 interface AmortizationRow {
   period: number;
@@ -31,6 +32,10 @@ export default function DirectLoanCalculator({
   const [principal, setPrincipal] = useState<number>(5000);
   const [termDuration, setTermDuration] = useState<number>(3);
   const [termType, setTermType] = useState<"Days" | "Weeks" | "Months">("Months");
+  
+  // 🚀 AI NEURAL LINK STATES
+  const [isAIOptimizing, setIsAIOptimizing] = useState(false);
+
   const [schedule, setSchedule] = useState<AmortizationRow[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const [calculated, setCalculated] = useState(false);
@@ -38,72 +43,89 @@ export default function DirectLoanCalculator({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
-  // Agent selection state
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(true);
 
-  // G1C: Vault Cash state for liquidity check
   const [vaultCash, setVaultCash] = useState<number | null>(null);
   const [loadingVaultCash, setLoadingVaultCash] = useState(true);
 
   // REBATE TRAP PRICING MODEL - Fixed rates
-  const baseInterestRate = 0.10; // 10% official rate
-  const discountRate = 0.04;     // 4% Good Payer Discount
-  const effectiveRate = 0.06;    // 6% effective rate (if paid on time)
+  const baseInterestRate = 0.10; 
+  const discountRate = 0.04;     
+  const effectiveRate = 0.06;    
 
-  // Fetch agents on mount
+  // Fetch agents
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/agents', { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        if (data.agents) {
-          setAgents(data.agents);
-        }
+        if (data.agents) setAgents(data.agents);
       })
       .catch(e => {
-        if (e.name !== 'AbortError') {
-          console.error(e);
-        }
+        if (e.name !== 'AbortError') console.error(e);
       })
       .finally(() => setLoadingAgents(false));
-
     return () => controller.abort();
   }, []);
 
-  // G1C: Fetch vault cash on mount
+  // Fetch vault cash
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/vault-cash', { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        if (data.vaultCash !== undefined) {
-          setVaultCash(data.vaultCash);
-        }
+        if (data.vaultCash !== undefined) setVaultCash(data.vaultCash);
       })
       .catch(e => {
-        if (e.name !== 'AbortError') {
-          console.error(e);
-        }
+        if (e.name !== 'AbortError') console.error(e);
       })
       .finally(() => setLoadingVaultCash(false));
-
     return () => controller.abort();
   }, []);
 
-  // REBATE TRAP: Calculate totals using fixed pricing model
-  const baseInterest = principal * baseInterestRate;    // 10% official
-  const discountAmount = principal * discountRate;       // 4% discount
-  const totalInterest = principal * effectiveRate;       // 6% effective (net)
+  // 🧠 GEMINI AI: AUTOMATIC DURATION OPTIMIZER
+  useEffect(() => {
+    const triggerAIOptimization = async () => {
+      if (principal <= 0) return; 
+
+      setIsAIOptimizing(true);
+      setCalculated(false);
+      setShowSchedule(false);
+
+      try {
+        const response = await calculateOptimalDurationWithAI(principal, termType);
+        if (response.success && response.duration) {
+          setTermDuration(response.duration);
+        } else {
+          console.warn("AI Optimization skipped or failed:", response.error);
+        }
+      } catch (error) {
+        console.error("Failed to connect to AI Engine:", error);
+      } finally {
+        setIsAIOptimizing(false);
+      }
+    };
+
+    // Debounce to prevent API spam while typing
+    const timeoutId = setTimeout(() => {
+      triggerAIOptimization();
+    }, 800); 
+
+    return () => clearTimeout(timeoutId);
+  }, [principal, termType]);
+
+  // REBATE TRAP: Calculate totals
+  const baseInterest = principal * baseInterestRate;   
+  const discountAmount = principal * discountRate;       
+  const totalInterest = principal * effectiveRate;       
   const totalRepayment = principal + totalInterest;
   const paymentPerPeriod = termDuration > 0 ? totalRepayment / termDuration : 0;
 
-  // G1C: Liquidity safety check - Principal vs Vault Cash
   const insufficientLiquidity = vaultCash !== null && principal > vaultCash;
   const liquidityDeficit = insufficientLiquidity ? principal - (vaultCash || 0) : 0;
 
-  // Calculate amortization schedule
   const calculateSchedule = () => {
     const newSchedule: AmortizationRow[] = [];
     const startDate = new Date();
@@ -144,17 +166,14 @@ export default function DirectLoanCalculator({
     setSuccess(null);
   };
 
-  // Format currency
   const formatCurrency = (amount: number) => {
     return `₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  // Format date
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Handle disburse
   const handleDisburse = async () => {
     if (!calculated || schedule.length === 0) {
       setError("Please calculate the schedule first.");
@@ -172,9 +191,9 @@ export default function DirectLoanCalculator({
         body: JSON.stringify({
           clientId,
           principal,
-          interestRate: 6, // Effective rate (Good Payer track)
-          baseInterestRate: 10, // Official rate for contract
-          discountRate: 4, // Good Payer discount
+          interestRate: 6, // Effective rate
+          baseInterestRate: 10, 
+          discountRate: 4, 
           termDuration,
           termType,
           totalInterest,
@@ -199,16 +218,11 @@ export default function DirectLoanCalculator({
         setSuccess(result.message || "Loan disbursed successfully!");
         setCalculated(false);
         setShowSchedule(false);
-        setSchedule([]
-);
-        // Reset form
+        setSchedule([]);
         setPrincipal(5000);
         setTermDuration(3);
         setSelectedAgentId(null);
-        // Notify parent
-        if (onDisburseComplete) {
-          onDisburseComplete();
-        }
+        if (onDisburseComplete) onDisburseComplete();
       }
     } catch (err: any) {
       setError(err.message || "Failed to disburse loan");
@@ -222,25 +236,14 @@ export default function DirectLoanCalculator({
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl space-y-5">
-      {/* Header */}
       <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
         <h2 className="text-emerald-400 font-bold uppercase tracking-widest text-sm">💰 Issue New Loan (Repeat Client)</h2>
         <span className="text-xs text-zinc-500">Client: {clientName}</span>
       </div>
 
-      {/* Error/Success Messages */}
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm font-medium">
-          ⚠️ {error}
-        </div>
-      )}
-      {success && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl text-sm font-medium">
-          ✓ {success}
-        </div>
-      )}
+      {error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm font-medium">⚠️ {error}</div>}
+      {success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl text-sm font-medium">✓ {success}</div>}
 
-      {/* Agent Selection */}
       <div>
         <label className={labelStyle}>Assigned Agent / Co-Maker (Optional)</label>
         <select
@@ -256,27 +259,21 @@ export default function DirectLoanCalculator({
             </option>
           ))}
         </select>
-        {selectedAgentId && (
-          <p className="text-xs text-emerald-400 mt-1">
-            ✓ Agent will be assigned as Co-Maker for this loan
-          </p>
-        )}
+        {selectedAgentId && <p className="text-xs text-emerald-400 mt-1">✓ Agent will be assigned as Co-Maker for this loan</p>}
       </div>
 
-      {/* Calculator Inputs */}
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className={labelStyle}>Principal Amount (₱)</label>
           <input
             type="number"
             value={principal}
-            onChange={e => { setPrincipal(Number(e.target.value) || 0); setCalculated(false); setShowSchedule(false); }}
+            onChange={e => { setPrincipal(Number(e.target.value) || 0); }}
             className={`${inputStyle} mt-2 text-emerald-400 text-xl`}
             min="100"
           />
         </div>
         
-        {/* REBATE TRAP: Fixed Rate Display */}
         <div className="col-span-2 bg-zinc-800 p-4 rounded-xl border border-zinc-700">
           <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-3">Interest Rate Structure</p>
           <div className="grid grid-cols-3 gap-3 text-center">
@@ -306,20 +303,24 @@ export default function DirectLoanCalculator({
         </div>
         
         <div>
-          <label className={labelStyle}>Duration</label>
+          {/* 🚀 AI OPTIMIZATION UI NOTIFIER */}
+          <div className="flex justify-between items-center">
+             <label className={labelStyle}>Duration</label>
+             {isAIOptimizing && <span className="text-[10px] text-cyan-400 font-black animate-pulse flex items-center gap-1">🧠 Optimizing...</span>}
+          </div>
           <input
             type="number"
             value={termDuration}
             onChange={e => { setTermDuration(Number(e.target.value) || 1); setCalculated(false); setShowSchedule(false); }}
-            className={`${inputStyle} mt-2`}
+            className={`${inputStyle} mt-2 ${isAIOptimizing ? 'border-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : ''}`}
             min="1"
           />
         </div>
-        <div className="col-span-2">
+        <div>
           <label className={labelStyle}>Term Type</label>
           <select
             value={termType}
-            onChange={e => { setTermType(e.target.value as "Days" | "Weeks" | "Months"); setCalculated(false); setShowSchedule(false); }}
+            onChange={e => { setTermType(e.target.value as "Days" | "Weeks" | "Months"); }}
             className={`${inputStyle} mt-2`}
           >
             <option value="Days">Daily Payments</option>
@@ -329,7 +330,6 @@ export default function DirectLoanCalculator({
         </div>
       </div>
 
-      {/* Quick Summary */}
       <div className="grid grid-cols-3 gap-3 bg-zinc-800 p-4 rounded-xl">
         <div className="text-center">
           <p className="text-xs text-zinc-500 uppercase">Net Interest</p>
@@ -346,35 +346,27 @@ export default function DirectLoanCalculator({
         </div>
       </div>
 
-      {/* Calculate Button */}
       <button
         type="button"
         onClick={calculateSchedule}
-        className="w-full bg-zinc-800 border-2 border-zinc-700 text-white py-3 font-bold text-sm uppercase tracking-widest rounded-xl hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+        disabled={isAIOptimizing}
+        className="w-full bg-zinc-800 border-2 border-zinc-700 text-white py-3 font-bold text-sm uppercase tracking-widest rounded-xl hover:border-emerald-500 hover:text-emerald-400 transition-colors disabled:opacity-50"
       >
-        📊 Calculate Schedule
+        {isAIOptimizing ? "🧠 AI Calculating..." : "📊 Calculate Schedule"}
       </button>
 
-      {/* Amortization Schedule Preview - Flexbox/Grid, NO TABLES */}
       {showSchedule && schedule.length > 0 && (
         <div className="border border-zinc-700 rounded-xl overflow-hidden">
-          {/* Header Row */}
           <div className="bg-zinc-800 p-3 flex justify-between text-xs font-bold text-zinc-400 uppercase tracking-wider">
             <span className="w-14">Period</span>
             <span className="w-24">Due Date</span>
             <span className="flex-1 text-right">Payment</span>
             <span className="flex-1 text-right">Balance</span>
           </div>
-          {/* Schedule Rows */}
           <div className="max-h-48 overflow-y-auto">
             {schedule.map((row) => (
-              <div 
-                key={row.period} 
-                className="p-3 border-t border-zinc-800 flex justify-between text-sm bg-zinc-900 hover:bg-zinc-800 transition-colors"
-              >
-                <span className="w-14 text-zinc-400 font-medium">
-                  {row.period} {termType === "Days" ? "D" : termType === "Weeks" ? "W" : "M"}
-                </span>
+              <div key={row.period} className="p-3 border-t border-zinc-800 flex justify-between text-sm bg-zinc-900 hover:bg-zinc-800 transition-colors">
+                <span className="w-14 text-zinc-400 font-medium">{row.period} {termType === "Days" ? "D" : termType === "Weeks" ? "W" : "M"}</span>
                 <span className="w-24 text-zinc-300 text-xs">{formatDate(row.paymentDate)}</span>
                 <span className="flex-1 text-right text-emerald-400 font-bold">{formatCurrency(row.amount)}</span>
                 <span className="flex-1 text-right text-white font-medium">{formatCurrency(row.remainingBalance)}</span>
@@ -384,39 +376,27 @@ export default function DirectLoanCalculator({
         </div>
       )}
 
-      {/* G1C: Insufficient Liquidity Warning */}
       {insufficientLiquidity && (
         <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
             <div>
-              <p className="text-red-400 font-bold uppercase tracking-wider text-sm">
-                INSUFFICIENT VAULT LIQUIDITY
-              </p>
+              <p className="text-red-400 font-bold uppercase tracking-wider text-sm">INSUFFICIENT VAULT LIQUIDITY</p>
               <div className="mt-2 space-y-1 text-sm">
-                <p className="text-zinc-300">
-                  Required: <span className="text-red-400 font-bold">{formatCurrency(principal)}</span>
-                </p>
-                <p className="text-zinc-300">
-                  Available: <span className="text-emerald-400 font-bold">{formatCurrency(vaultCash || 0)}</span>
-                </p>
-                <p className="text-zinc-300">
-                  Deficit: <span className="text-red-400 font-bold">{formatCurrency(liquidityDeficit)}</span>
-                </p>
+                <p className="text-zinc-300">Required: <span className="text-red-400 font-bold">{formatCurrency(principal)}</span></p>
+                <p className="text-zinc-300">Available: <span className="text-emerald-400 font-bold">{formatCurrency(vaultCash || 0)}</span></p>
+                <p className="text-zinc-300">Deficit: <span className="text-red-400 font-bold">{formatCurrency(liquidityDeficit)}</span></p>
               </div>
-              <p className="text-zinc-500 text-xs mt-2">
-                Deposit additional capital to Treasury to enable disbursement.
-              </p>
+              <p className="text-zinc-500 text-xs mt-2">Deposit additional capital to Treasury to enable disbursement.</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Disburse Button */}
       <button
         type="button"
         onClick={handleDisburse}
-        disabled={!calculated || isProcessing || insufficientLiquidity}
+        disabled={!calculated || isProcessing || insufficientLiquidity || isAIOptimizing}
         className="w-full bg-emerald-500 text-zinc-900 font-black py-4 rounded-xl hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors uppercase tracking-widest text-sm shadow-lg"
       >
         {isProcessing ? (
@@ -424,11 +404,7 @@ export default function DirectLoanCalculator({
             <span className="w-4 h-4 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin"></span>
             Processing...
           </span>
-        ) : insufficientLiquidity ? (
-          "⛔ Insufficient Vault Funds"
-        ) : (
-          "✓ Disburse Loan"
-        )}
+        ) : insufficientLiquidity ? "⛔ Insufficient Vault Funds" : "✓ Disburse Loan"}
       </button>
     </div>
   );
