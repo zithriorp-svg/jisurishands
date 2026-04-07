@@ -3,16 +3,14 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-// 🚀 BULLETPROOF SHIELD: Using 'any' and ignoring the strict TypeScript check to force a successful Vercel build.
+// 🚀 BULLETPROOF SHIELD
 // @ts-ignore
 export default async function AgentReceiptPage({ searchParams }: any) {
-  // Await the params safely to extract the phone number
   const params = await searchParams;
   const phone = params?.phone;
 
   if (!phone) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: No phone number provided.</div>;
 
-  // Fetch the latest application using the agent's phone number
   const app = await prisma.agentApplication.findFirst({
     where: { phone: phone },
     orderBy: { createdAt: 'desc' }
@@ -20,7 +18,7 @@ export default async function AgentReceiptPage({ searchParams }: any) {
 
   if (!app) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: Application not found.</div>;
 
-  // 🚀 HYDRATION SHIELD: Force Asia/Manila timezone so the Server and your Phone perfectly agree!
+  // 🚀 HYDRATION SHIELD
   const currentDate = new Date(app.createdAt).toLocaleString('en-US', { 
     timeZone: 'Asia/Manila',
     year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' 
@@ -76,14 +74,35 @@ export default async function AgentReceiptPage({ searchParams }: any) {
           <div className="col-span-2 font-medium italic text-gray-700">{app.collateralCondition || '—'}</div>
         </div>
 
-        {/* 🚀 TAGALOG AGREEMENT */}
-        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Pananagutan (Agent Agreement)</h2>
-        <div className="text-sm mb-6 pl-2 text-gray-800 space-y-2 leading-relaxed">
-          <p><strong>✅ BENEPISYO:</strong> Makakatanggap ng 40% na komisyon mula sa purong interes ng mga nakolektang pautang.</p>
-          <p><strong>🛠️ TUNGKULIN:</strong> Personal na magsasala ng kliyente, maniningil, at magre-remit ng bayad sa tamang oras.</p>
-          <p className="text-rose-800 font-bold bg-rose-50 p-3 border border-rose-300 rounded mt-2">
-            ⚠️ PANANAGUTAN BILANG CO-MAKER: Kung hindi magbayad, magtago, o tumakbo ang kliyente, ang Agent bilang Co-Maker ang direktang magbabayad ng buong utang (Principal + Interes + Penalties). Kusang-loob na binibigyan ng karapatan ang kumpanya na hatakin (seize) ang idineklarang kolateral sa itaas nang walang karagdagang abiso sa korte.
-          </p>
+        {/* 🚀 EXACT MATCH: FULL TAGALOG AGREEMENT */}
+        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Responsibilidad (Agreement)</h2>
+        <div className="text-sm mb-6 pl-2 text-gray-800 space-y-4 leading-relaxed">
+          <p className="font-bold uppercase">Bilang Field Agent at Co-Maker, sumasang-ayon ako sa sumusunod:</p>
+          
+          <div>
+            <h3 className="font-bold text-emerald-700 uppercase">✅ Mga Benepisyo (Pros)</h3>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Makakatanggap ako ng <strong>40% komisyon</strong> mula sa purong interes ng mga pautang na matagumpay kong nakolekta.</li>
+              <li>Walang limitasyon sa maaaring kitain basta't maayos ang paniningil at walang nade-default.</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-blue-700 uppercase">🛠️ Mga Tungkulin (Responsibilities)</h3>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Ako mismo ang magsasala (screen), mag-aapruba, at maniniguro na ang aking mga kliyente ay may kakayahang magbayad.</li>
+              <li>Ako ang personal na maniningil at magre-remit ng mga bayad sa itinakdang oras.</li>
+            </ul>
+          </div>
+
+          <div className="bg-rose-50 border-2 border-rose-400 p-4 rounded-xl mt-4 print:border-black print:bg-transparent">
+            <h3 className="font-black text-rose-800 uppercase mb-2 text-base print:text-black">⚠️ Mga Panganib at Pananagutan (Cons & Liabilities)</h3>
+            <ul className="list-disc pl-5 space-y-2 font-medium text-rose-950 print:text-black">
+              <li><strong>AKO AY CO-MAKER:</strong> Kung hindi magbayad, magtago, o tumakbo ang aking kliyente, <strong>AKO</strong> bilang Co-Maker ang direktang magbabayad ng kanilang buong utang (Principal + Interest + Penalties).</li>
+              <li><strong>PAGHATAK NG KOLATERAL:</strong> Kung hindi ko mabayaran ang utang ng aking mga nag-default na kliyente, kusang-loob kong isinusuko at binibigyan ng karapatan ang kumpanya na <strong>HATAKIN (Seize)</strong> ang idineklara kong kolateral sa itaas upang ipambayad sa utang nang walang idinadaang proseso sa korte.</li>
+              <li>Ang hindi pag-remit ng nakolektang pera mula sa kliyente ay agarang sasampahan ng kasong kriminal (Estafa/Theft).</li>
+            </ul>
+          </div>
         </div>
 
         {app.digitalSignature && (
