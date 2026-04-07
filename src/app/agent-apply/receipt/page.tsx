@@ -33,6 +33,7 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
         <div className="flex gap-4">
           <Link href="/agents" className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 transition-all">← Back to Fleet</Link>
           
+          {/* 🚀 FIXED: Native HTML Override to bypass Next.js Server Component function blocks! */}
           <div dangerouslySetInnerHTML={{ __html: `<button onclick="window.print()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg transition-all">🖨️ Print / Save PDF</button>` }} />
           
         </div>
@@ -71,37 +72,6 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
           <div className="col-span-2 font-medium italic text-gray-700">{app.collateralCondition || '—'}</div>
         </div>
 
-        {/* 🚀 PUNCTUATION FIXED: 100% Vercel Compatible */}
-        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Responsibilidad (Agreement)</h2>
-        <div className="text-sm mb-6 pl-2 text-gray-800 space-y-4 leading-relaxed">
-          <p className="font-bold uppercase">Bilang Field Agent at Co-Maker, sumasang-ayon ako sa sumusunod:</p>
-          
-          <div>
-            <h3 className="font-bold text-emerald-700 uppercase">✅ Mga Benepisyo (Pros)</h3>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Makakatanggap ako ng <strong>40% komisyon</strong> mula sa purong interes ng mga pautang na matagumpay kong nakolekta.</li>
-              <li>Walang limitasyon sa maaaring kitain basta maayos ang paniningil at walang nade-default.</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 className="font-bold text-blue-700 uppercase">🛠️ Mga Tungkulin (Responsibilities)</h3>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Ako mismo ang magsasala (screen), mag-aapruba, at maniniguro na ang aking mga kliyente ay may kakayahang magbayad.</li>
-              <li>Ako ang personal na maniningil at magre-remit ng mga bayad sa itinakdang oras.</li>
-            </ul>
-          </div>
-
-          <div className="bg-rose-50 border-2 border-rose-400 p-4 rounded-xl mt-4 print:border-black print:bg-transparent">
-            <h3 className="font-black text-rose-800 uppercase mb-2 text-base print:text-black">⚠️ Mga Panganib at Pananagutan (Cons &amp; Liabilities)</h3>
-            <ul className="list-disc pl-5 space-y-2 font-medium text-rose-950 print:text-black">
-              <li><strong>AKO AY CO-MAKER:</strong> Kung hindi magbayad, magtago, o tumakbo ang aking kliyente, <strong>AKO</strong> bilang Co-Maker ang direktang magbabayad ng kanilang buong utang (Principal + Interest + Penalties).</li>
-              <li><strong>PAGHATAK NG KOLATERAL:</strong> Kung hindi ko mabayaran ang utang ng aking mga nag-default na kliyente, kusang-loob kong isinusuko at binibigyan ng karapatan ang kumpanya na <strong>HATAKIN (Seize)</strong> ang idineklara kong kolateral sa itaas upang ipambayad sa utang nang walang idinadaang proseso sa korte.</li>
-              <li>Ang hindi pag-remit ng nakolektang pera mula sa kliyente ay agarang sasampahan ng kasong kriminal (Estafa o Theft).</li>
-            </ul>
-          </div>
-        </div>
-
         {app.digitalSignature && (
           <div className="mt-8 pt-4 border-t-2 border-black print:break-inside-avoid">
             <h2 className="font-bold text-lg mb-2 uppercase">Digital Signature</h2>
@@ -138,3 +108,4 @@ export default async function AgentReceiptPage(props: { searchParams: Promise<{ 
     </div>
   );
 }
+
