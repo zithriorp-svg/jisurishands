@@ -3,132 +3,57 @@
 import { useState, useEffect } from "react";
 import { calculateOptimalDurationWithAI } from "@/app/review/actions";
 
-interface Agent {
-  id: number;
-  name: string;
-  phone: string;
-}
-
 interface LoanCalculatorProps {
-  applicationId: number;
-  applicantName: string;
-  suggestedPrincipal?: number;
-  suggestedDuration?: number;
-  suggestedTermType?: string;
-  suggestedAgentId?: number | null;
-  onDisburse: (loanData: LoanDisbursementData) => Promise<void>;
+  appData: any;
+  onDisburse: (loanData: any) => Promise<void>;
   onReject: () => Promise<void>;
   isProcessing: boolean;
   preselectedAgentId?: number | null;
 }
 
-export interface LoanDisbursementData {
-  applicationId: number;
-  principal: number;
-  interestRate: number;
-  termDuration: number;
-  termType: "Days" | "Weeks" | "Months";
-  totalInterest: number;
-  totalRepayment: number;
-  schedule: {
-    periodNumber: number;
-    paymentDate: Date;
-    amount: number;
-    principalPortion: number;
-    interestPortion: number;
-    remainingBalance: number;
-  }[];
-  agentId?: number | null;
-}
-
-export default function LoanCalculator({
-  applicationId,
-  applicantName,
-  suggestedPrincipal = 5000,
-  suggestedDuration,
-  suggestedTermType,
-  suggestedAgentId,
-  onDisburse,
-  onReject,
-  isProcessing,
-  preselectedAgentId
-}: LoanCalculatorProps) {
-  const [principal, setPrincipal] = useState<number>(suggestedPrincipal);
+export default function LoanCalculator({ appData, onDisburse, onReject, isProcessing, preselectedAgentId }: LoanCalculatorProps) {
+  // 🚀 SYNC LINK: Loads exact client requests instantly!
+  const [principal, setPrincipal] = useState<number>(appData.requestedPrincipal);
+  const [termType, setTermType] = useState<string>(appData.requestedTermType);
+  const [termDuration, setTermDuration] = useState<number>(appData.requestedDuration || 1);
+  
   const [officialRate, setOfficialRate] = useState<number>(10);
   const [discountedRate, setDiscountedRate] = useState<number>(6);
-
-  const [termType, setTermType] = useState<"Days" | "Weeks" | "Months">(
-    (suggestedTermType as "Days" | "Weeks" | "Months") || "Months"
-  );
-  
-  const [termDuration, setTermDuration] = useState<number>(suggestedDuration || 3);
   const [isAIOptimizing, setIsAIOptimizing] = useState(false);
-  
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(suggestedAgentId || preselectedAgentId || null);
-  const [loadingAgents, setLoadingAgents] = useState(true);
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(appData.requestedAgentId || preselectedAgentId || null);
 
+  const [agents, setAgents] = useState<any[]>([]);
   const [vaultCash, setVaultCash] = useState<number | null>(null);
-  const [loadingVaultCash, setLoadingVaultCash] = useState(true);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch('/api/agents', { signal: controller.signal })
-      .then(res => res.json())
-      .then(data => { if (data.agents) setAgents(data.agents); })
-      .catch(e => { if (e.name !== 'AbortError') console.error(e); })
-      .finally(() => setLoadingAgents(false));
-    return () => controller.abort();
+    fetch('/api/agents').then(res => res.json()).then(data => { if (data.agents) setAgents(data.agents); });
+    fetch('/api/vault-cash').then(res => res.json()).then(data => { if (data.vaultCash !== undefined) setVaultCash(data.vaultCash); });
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch('/api/vault-cash', { signal: controller.signal })
-      .then(res => res.json())
-      .then(data => { if (data.vaultCash !== undefined) setVaultCash(data.vaultCash); })
-      .catch(e => { if (e.name !== 'AbortError') console.error(e); })
-      .finally(() => setLoadingVaultCash(false));
-    return () => controller.abort();
-  }, []);
-
-  // 🧠 GEMINI AI: LIVE DURATION OPTIMIZER (NOW PASSING DISCOUNTED RATE)
+  // 🧠 LIVE AI DURATION OPTIMIZER
   useEffect(() => {
     const triggerAIOptimization = async () => {
-      if (principal <= 0) {
-        setTermDuration(0);
-        return; 
-      }
+      if (principal <= 0) return; 
       setIsAIOptimizing(true);
-
       try {
-        // 🚀 Passing the interest rate to the new Strategist Engine!
         const response = await calculateOptimalDurationWithAI(principal, termType, discountedRate);
-        if (response.success && response.duration > 0) {
-          setTermDuration(response.duration);
-        } else {
-          setTermDuration(1); // Failsafe
-        }
+        if (response.success && response.duration > 0) setTermDuration(response.duration);
       } catch (error) {
-        console.error("AI Link Error:", error);
-        setTermDuration(1); // Failsafe
+        console.error("AI Link Error");
       } finally {
         setIsAIOptimizing(false);
       }
     };
-
     const timeoutId = setTimeout(() => { triggerAIOptimization(); }, 800); 
     return () => clearTimeout(timeoutId);
-  }, [principal, termType, discountedRate]); // 👈 Triggers if rate changes!
+  }, [principal, termType, discountedRate]); 
 
   const totalInterest = Number((principal * (discountedRate / 100)).toFixed(2));
   const totalRepayment = Number((principal + totalInterest).toFixed(2));
   const insufficientLiquidity = vaultCash !== null && principal > vaultCash;
-  const liquidityDeficit = insufficientLiquidity ? principal - (vaultCash || 0) : 0;
-  const displayPaymentPerPeriod = termDuration > 0 ? totalRepayment / termDuration : 0;
 
   const generateSchedule = () => {
     if (!principal || principal <= 0 || !termDuration) return [];
-    
     const newSchedule = [];
     const startDate = new Date();
     let remainingPrincipalToDistribute = principal;
@@ -141,57 +66,33 @@ export default function LoanCalculator({
       else if (termType === "Months") dueDate.setMonth(dueDate.getMonth() + i);
       
       const isLastPeriod = (i === termDuration);
-      let strictPrincipal = 0;
-      let strictInterest = 0;
-
-      if (isLastPeriod) {
-        strictPrincipal = Number(remainingPrincipalToDistribute.toFixed(2));
-        strictInterest = Number(remainingInterestToDistribute.toFixed(2));
-      } else {
-        strictPrincipal = Number((principal / termDuration).toFixed(2));
-        strictInterest = Number((totalInterest / termDuration).toFixed(2));
+      let strictPrincipal = isLastPeriod ? Number(remainingPrincipalToDistribute.toFixed(2)) : Number((principal / termDuration).toFixed(2));
+      let strictInterest = isLastPeriod ? Number(remainingInterestToDistribute.toFixed(2)) : Number((totalInterest / termDuration).toFixed(2));
+      
+      if (!isLastPeriod) {
         remainingPrincipalToDistribute -= strictPrincipal;
         remainingInterestToDistribute -= strictInterest;
       }
 
       const strictTotalAmount = Number((strictPrincipal + strictInterest).toFixed(2));
-      const remainingBalanceBeforeThisPayment = isLastPeriod 
-        ? strictTotalAmount 
-        : Number(((remainingPrincipalToDistribute + remainingInterestToDistribute) + strictTotalAmount).toFixed(2));
+      const remainingBalanceBeforeThisPayment = isLastPeriod ? strictTotalAmount : Number(((remainingPrincipalToDistribute + remainingInterestToDistribute) + strictTotalAmount).toFixed(2));
       const finalRemainingBalance = isLastPeriod ? 0 : Number((remainingBalanceBeforeThisPayment - strictTotalAmount).toFixed(2));
       
-      newSchedule.push({
-        period: i,
-        paymentDate: dueDate,
-        dateStr: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        amount: strictTotalAmount,
-        principalPortion: strictPrincipal,
-        interestPortion: strictInterest,
-        remainingBalance: finalRemainingBalance
-      });
+      newSchedule.push({ period: i, paymentDate: dueDate, dateStr: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), amount: strictTotalAmount, principalPortion: strictPrincipal, interestPortion: strictInterest, remainingBalance: finalRemainingBalance });
     }
     return newSchedule;
   };
 
   const schedule = generateSchedule();
 
-  const formatCurrency = (amount: number) => {
-    return `₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-
   const handleDisburse = async () => {
     if (schedule.length === 0) return;
-
-    const loanData: LoanDisbursementData = {
-      applicationId, principal, interestRate: discountedRate, 
+    const loanData = {
+      applicationId: appData.id, principal, interestRate: discountedRate, 
       termDuration, termType, totalInterest, totalRepayment,
-      schedule: schedule.map(row => ({
-        periodNumber: row.period, paymentDate: row.paymentDate, amount: row.amount,
-        principalPortion: row.principalPortion, interestPortion: row.interestPortion, remainingBalance: row.remainingBalance
-      })),
+      schedule: schedule.map(row => ({ periodNumber: row.period, paymentDate: row.paymentDate, amount: row.amount, principalPortion: row.principalPortion, interestPortion: row.interestPortion, remainingBalance: row.remainingBalance })),
       agentId: selectedAgentId
     };
-
     await onDisburse(loanData);
   };
 
@@ -199,25 +100,81 @@ export default function LoanCalculator({
   const labelStyle = "text-xs text-gray-500 font-bold uppercase tracking-widest";
 
   return (
-    <div className="bg-[#0f0f13] border border-[#00df82]/40 p-5 rounded-2xl space-y-5 shadow-[0_0_15px_rgba(0,223,130,0.05)] print:bg-white print:border-black print:shadow-none">
+    <div className="bg-[#0f0f13] border border-[#00df82]/40 p-5 rounded-2xl space-y-5 shadow-[0_0_15px_rgba(0,223,130,0.05)] print:bg-white print:border-none print:shadow-none print:p-0">
+      
       <div className="flex justify-between items-center print:hidden">
         <h2 className="text-[#00df82] font-bold uppercase tracking-widest text-sm">💰 Approve & Fund</h2>
-        <span className="text-xs text-gray-500">For: {applicantName}</span>
       </div>
 
-      <div className="hidden print:block mb-4">
-        <h1 className="text-xl font-bold text-black">LOAN DISBURSEMENT</h1>
-        <p className="text-sm text-gray-600">Borrower: {applicantName}</p>
-        <p className="text-sm text-gray-600">Principal: ₱{principal.toLocaleString()} | Interest: {officialRate}% Official ({discountedRate}% Discounted)</p>
-      </div>
+      {/* ======================================= */}
+      {/* 📄 THE MASTER PDF CONTRACT (PRINT ONLY) */}
+      {/* ======================================= */}
+      <div className="hidden print:block text-black bg-white font-sans mx-auto max-w-3xl">
+        <div className="border-b-2 border-black pb-4 mb-6 text-center">
+          <h1 className="text-3xl font-bold uppercase tracking-wider">Master Loan Agreement</h1>
+          <p className="text-sm text-gray-600 font-bold mt-1">Date: {new Date().toLocaleDateString()}</p>
+        </div>
 
-      <div className="print:hidden">
-        <label className={labelStyle}>Assigned Agent / Co-Maker (Optional)</label>
-        <select value={selectedAgentId || ""} onChange={e => setSelectedAgentId(e.target.value ? Number(e.target.value) : null)} className={`${inputStyle} mt-2`} disabled={loadingAgents}>
-          <option value="">No Agent Assigned</option>
-          {agents.map(agent => ( <option key={agent.id} value={agent.id}>{agent.name} {agent.phone ? `(${agent.phone})` : ''}</option> ))}
-        </select>
+        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">1. Borrower Identity</h2>
+        <div className="grid grid-cols-2 gap-y-2 text-sm mb-6 pl-2">
+          <div className="font-semibold text-gray-600">Full Name:</div><div className="font-bold">{appData.firstName} {appData.lastName}</div>
+          <div className="font-semibold text-gray-600">Phone:</div><div className="font-bold">{appData.phone || '—'}</div>
+          <div className="font-semibold text-gray-600">Address:</div><div className="font-bold">{appData.address || '—'}</div>
+        </div>
+
+        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-green-900">2. Loan Disbursement Details</h2>
+        <div className="grid grid-cols-2 gap-y-2 text-sm mb-6 pl-2 bg-green-50 p-4 rounded-lg border border-green-200">
+          <div className="font-semibold text-green-800">Principal Amount:</div><div className="font-bold text-xl text-green-900">₱{principal.toLocaleString()}</div>
+          <div className="font-semibold text-green-800">Official Interest Rate:</div><div className="font-bold">{officialRate}%</div>
+          <div className="font-semibold text-green-800">Good Payer Discount:</div><div className="font-bold text-emerald-600">-{Math.round(officialRate - discountedRate)}% (Net: {discountedRate}%)</div>
+          <div className="font-semibold text-green-800">Total Repayment:</div><div className="font-bold">₱{totalRepayment.toLocaleString()}</div>
+          <div className="font-semibold text-green-800">Term Duration:</div><div className="font-bold">{termDuration} {termType}</div>
+        </div>
+
+        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">3. AI-Optimized Amortization Schedule</h2>
+        <div className="border border-black mb-6">
+          <div className="bg-gray-200 p-2 text-xs font-bold text-black flex justify-between uppercase border-b border-black">
+            <span className="w-16">Period</span><span className="w-24">Due Date</span><span className="w-28 text-right">Payment</span><span className="w-28 text-right">Balance</span>
+          </div>
+          {schedule.map((row) => (
+            <div key={row.period} className="p-2 border-b border-gray-300 flex justify-between text-sm text-black">
+              <span className="w-16">{row.period} {termType.slice(0, -1)}</span><span className="w-24 text-xs">{row.dateStr}</span>
+              <span className="w-28 text-right font-bold">₱{row.amount.toLocaleString()}</span><span className="w-28 text-right">₱{row.remainingBalance.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+
+        <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-purple-900">4. Pledged Collateral</h2>
+        <div className="grid grid-cols-2 gap-y-2 text-sm mb-6 pl-2 bg-purple-50 p-4 rounded-lg border border-purple-200">
+          <div className="font-semibold text-purple-800">Asset Type:</div><div className="font-bold">{appData.collateralName || '—'}</div>
+          <div className="font-semibold text-purple-800">Market Value:</div><div className="font-bold text-rose-600">₱{(appData.collateralValue || 0).toLocaleString()}</div>
+          <div className="font-semibold col-span-2 mt-2 text-purple-800">Specifications & Condition:</div><div className="col-span-2 font-medium italic text-gray-700">{appData.collateralCondition || '—'}</div>
+        </div>
+
+        <div style={{ pageBreakInside: 'avoid' }}>
+          <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">5. Mga Tungkulin at Responsibilidad (Agreement)</h2>
+          <div className="text-sm mb-6 pl-2 text-gray-800 space-y-4 leading-relaxed">
+            <p className="font-bold uppercase">Bilang Nangutang, sumasang-ayon ako sa sumusunod:</p>
+            <ul className="list-disc pl-5 space-y-2 font-medium text-black">
+              <li><strong>INTERES AT DISCOUNT:</strong> Naiintindihan ko na ang opisyal na interes ay {officialRate}%. Mabibigyan lamang ako ng Good Payer Discount ({discountedRate}%) kung magbabayad ako ng buo at nasa oras. Kung ako ay ma-late, sisingilin ako ng buong {officialRate}%.</li>
+              <li><strong>PAGHATAK NG KOLATERAL:</strong> Kung hindi ko mabayaran ang aking utang, kusang-loob kong isinusuko at binibigyan ng karapatan ang kumpanya na HATAKIN (Seize) ang idineklara kong kolateral upang ipambayad sa utang nang walang idinadaang proseso sa korte.</li>
+              <li><strong>PENALTY AT LEGAL ACTION:</strong> Ang pagtatago o pagtakbo sa utang ay agarang sasampahan ng kaukulang kasong sibil o kriminal (Estafa o Theft) at irereport sa kinauukulan.</li>
+            </ul>
+          </div>
+        </div>
+
+        {appData.digitalSignature && (
+          <div className="mt-8 pt-4 border-t-2 border-black print:break-inside-avoid">
+            <h2 className="font-bold text-lg mb-2 uppercase">Digital Signature</h2>
+            <div className="p-4 inline-block bg-gray-50 border-2 border-gray-300 rounded-lg">
+              <img src={appData.digitalSignature} alt="Digital Signature" style={{ maxHeight: '100px', filter: 'invert(1) contrast(200%)' }} />
+            </div>
+            <p className="text-xs text-gray-500 mt-2 font-bold uppercase">Signatory: {appData.firstName} {appData.lastName}</p>
+          </div>
+        )}
       </div>
+      {/* ======================================= */}
+
 
       <div className="grid grid-cols-2 gap-4 print:hidden">
         <div className="col-span-2">
@@ -241,30 +198,13 @@ export default function LoanCalculator({
              <label className={labelStyle}>Duration</label>
              {isAIOptimizing && <span className="text-[10px] text-cyan-400 font-black animate-pulse flex items-center gap-1">🧠 Optimizing...</span>}
           </div>
-          <input type="number" value={termDuration} readOnly className={`${inputStyle} mt-2 opacity-70 cursor-not-allowed ${isAIOptimizing ? 'border-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : ''}`} />
+          <input type="number" value={termDuration} readOnly className={`${inputStyle} mt-2 opacity-70 cursor-not-allowed`} />
         </div>
         <div>
           <label className={labelStyle}>Term Type</label>
           <select value={termType} onChange={e => setTermType(e.target.value as "Days" | "Weeks" | "Months")} className={`${inputStyle} mt-2`}>
-            <option value="Days">Daily Payments</option>
-            <option value="Weeks">Weekly Payments</option>
-            <option value="Months">Monthly Payments</option>
+            <option value="Days">Daily Payments</option><option value="Weeks">Weekly Payments</option><option value="Months">Monthly Payments</option>
           </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 bg-[#1c1c21] p-4 rounded-xl print:bg-gray-100 print:border print:border-black">
-        <div className="text-center">
-          <p className="text-xs text-gray-500 print:text-gray-600">Interest</p>
-          <p className="text-lg font-bold text-yellow-500 print:text-black">{formatCurrency(totalInterest)}</p>
-        </div>
-        <div className="text-center border-x border-[#2a2a35] print:border-gray-300">
-          <p className="text-xs text-gray-500 print:text-gray-600">Total</p>
-          <p className="text-lg font-bold text-[#00df82] print:text-black">{formatCurrency(totalRepayment)}</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-gray-500 print:text-gray-600">Per Period</p>
-          <p className="text-lg font-bold text-white print:text-black">{formatCurrency(displayPaymentPerPeriod)}</p>
         </div>
       </div>
 
@@ -273,53 +213,33 @@ export default function LoanCalculator({
           <span className="text-cyan-400 font-black animate-pulse flex items-center justify-center gap-2">🧠 AI GENERATING SCHEDULE...</span>
         </div>
       ) : schedule.length > 0 ? (
-        <div className="border border-[#2a2a35] rounded-xl overflow-hidden print:border-black mt-4">
-          <div className="flex justify-between items-center p-3 bg-[#1c1c21] print:bg-gray-100">
-            <h4 className="font-bold text-white print:text-black text-xs">📅 FINAL AMORTIZATION SCHEDULE</h4>
-            <button type="button" onClick={() => window.print()} className="print:hidden bg-zinc-800 hover:bg-zinc-700 text-[10px] text-white py-1 px-3 rounded border border-zinc-600 transition-colors uppercase font-bold">📄 Print / Save PDF</button>
+        <div className="border border-[#2a2a35] rounded-xl overflow-hidden mt-4 print:hidden">
+          <div className="flex justify-between items-center p-3 bg-[#1c1c21]">
+            <h4 className="font-bold text-white text-xs">📅 FINAL AMORTIZATION SCHEDULE</h4>
+            <button type="button" onClick={() => window.print()} className="bg-zinc-800 hover:bg-zinc-700 text-[10px] text-white py-1 px-3 rounded border border-zinc-600 transition-colors uppercase font-bold shadow-lg">📄 Print / Save PDF Contract</button>
           </div>
-          <div className="bg-[#1c1c21] p-3 text-[10px] font-black text-gray-400 flex justify-between uppercase tracking-wider print:bg-gray-50 print:text-black print:border-b print:border-black">
-            <span className="w-16">Period</span>
-            <span className="w-24">Due Date</span>
-            <span className="w-28 text-right">Payment</span>
-            <span className="w-28 text-right">Balance</span>
+          <div className="bg-[#1c1c21] p-3 text-[10px] font-black text-gray-400 flex justify-between uppercase tracking-wider border-b border-[#2a2a35]">
+            <span className="w-16">Period</span><span className="w-24">Due Date</span><span className="w-28 text-right">Payment</span><span className="w-28 text-right">Balance</span>
           </div>
-          <div className="max-h-48 overflow-y-auto print:max-h-none print:overflow-visible">
+          <div className="max-h-48 overflow-y-auto">
             {schedule.map((row) => (
-              <div key={row.period} className="p-3 border-t border-[#2a2a35] flex justify-between text-xs bg-[#0f0f13] print:bg-white print:border-gray-300">
-                <span className="w-16 text-gray-400 print:text-black">{row.period} {termType.slice(0, -1)}</span>
-                <span className="w-24 text-gray-300 text-[10px] print:text-black font-mono">{row.dateStr}</span>
-                <span className="w-28 text-right text-[#00df82] font-black print:text-black">{formatCurrency(row.amount)}</span>
-                <span className="w-28 text-right text-white print:text-black">{formatCurrency(row.remainingBalance)}</span>
+              <div key={row.period} className="p-3 border-t border-[#2a2a35] flex justify-between text-xs bg-[#0f0f13]">
+                <span className="w-16 text-gray-400">{row.period} {termType.slice(0, -1)}</span><span className="w-24 text-gray-300 text-[10px]">{row.dateStr}</span>
+                <span className="w-28 text-right text-[#00df82] font-bold">₱{row.amount.toLocaleString()}</span><span className="w-28 text-right text-white">₱{row.remainingBalance.toLocaleString()}</span>
               </div>
             ))}
           </div>
         </div>
-      ) : (
-        <div className="mt-4 p-4 border border-[#2a2a35] rounded-xl text-center bg-[#1c1c21] print:hidden">
-          <span className="text-gray-500 font-bold text-xs uppercase">Enter principal to generate schedule</span>
-        </div>
-      )}
+      ) : null}
 
-      {insufficientLiquidity && (
-        <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 print:hidden">
-          <p className="text-red-400 font-bold uppercase tracking-wider text-xs">⚠️ INSUFFICIENT VAULT LIQUIDITY</p>
-          <p className="text-zinc-500 text-[10px] mt-1">Deficit: {formatCurrency(liquidityDeficit)}</p>
-        </div>
-      )}
+      {insufficientLiquidity && <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 print:hidden"><p className="text-red-400 font-bold uppercase tracking-wider text-xs">⚠️ INSUFFICIENT VAULT LIQUIDITY</p></div>}
 
       <div className="flex gap-3 pt-2 print:hidden">
-        <button
-          type="button"
-          onClick={handleDisburse}
-          disabled={schedule.length === 0 || isProcessing || insufficientLiquidity || isAIOptimizing}
-          className="flex-1 bg-[#00df82] text-[#09090b] font-black py-4 rounded-xl hover:bg-[#00df82]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(0,223,130,0.2)]"
-        >
+        <button onClick={handleDisburse} disabled={schedule.length === 0 || isProcessing || insufficientLiquidity || isAIOptimizing} className="flex-1 bg-[#00df82] text-[#09090b] font-black py-4 rounded-xl hover:bg-[#00df82]/80 disabled:opacity-50 uppercase text-xs">
           {isProcessing ? "Processing..." : insufficientLiquidity ? "⛔ NO FUNDS" : "✓ DISBURSE LOAN"}
         </button>
-        <button type="button" onClick={onReject} disabled={isProcessing} className="px-5 bg-red-500/10 text-red-500 border border-red-500/30 font-bold rounded-xl hover:bg-red-500/20 disabled:opacity-50 transition-colors text-[10px] uppercase tracking-widest">Drop</button>
+        <button onClick={onReject} disabled={isProcessing} className="px-5 bg-red-500/10 text-red-500 border border-red-500/30 font-bold rounded-xl hover:bg-red-500/20 disabled:opacity-50 text-[10px] uppercase">Drop</button>
       </div>
     </div>
   );
 }
-
