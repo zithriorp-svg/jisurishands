@@ -3,17 +3,13 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-// 🚀 STRICT SHIELD: Universal compatibility for Next.js params
-type PageProps = {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }> | { [key: string]: string | string[] | undefined };
-};
-
-export default async function AgentReceiptPage(props: PageProps) {
-  const resolvedParams = await Promise.resolve(props.searchParams);
-  const phone = typeof resolvedParams?.phone === 'string' ? resolvedParams.phone : undefined;
+export default async function AgentReceiptPage(props: { searchParams: Promise<{ phone?: string }> }) {
+  const searchParams = await props.searchParams;
+  const phone = searchParams?.phone;
 
   if (!phone) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: No phone number provided.</div>;
 
+  // Fetch the approved application using the agent's phone number
   const app = await prisma.agentApplication.findFirst({
     where: { phone: phone, status: "APPROVED" },
     orderBy: { createdAt: 'desc' }
@@ -21,14 +17,14 @@ export default async function AgentReceiptPage(props: PageProps) {
 
   if (!app) return <div className="p-10 text-white font-bold bg-[#09090b] min-h-screen">404: Application not found or not approved.</div>;
 
-  // 🚀 HYDRATION SAFE: Strips timezone math entirely to prevent Japan vs USA server crashes
-  const currentDate = app.createdAt ? String(app.createdAt).substring(0, 15) : "N/A";
-  const safeBirthDate = app.birthDate ? String(app.birthDate).substring(0, 15) : "—";
+  const currentDate = new Date(app.createdAt).toLocaleDateString('en-PH', { 
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+  });
 
   return (
     <div className="min-h-screen bg-[#09090b] p-8 print:bg-white print:p-0">
       
-      {/* NO-PRINT HEADER */}
+      {/* NO-PRINT HEADER (For Admin UI) */}
       <div className="print:hidden max-w-2xl mx-auto mb-8 flex justify-between items-center bg-zinc-900 border border-zinc-800 p-4 rounded-xl shadow-xl">
         <div>
           <h1 className="text-white font-bold">Master Contract Dossier</h1>
@@ -36,7 +32,10 @@ export default async function AgentReceiptPage(props: PageProps) {
         </div>
         <div className="flex gap-4">
           <Link href="/agents" className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 transition-all">← Back to Fleet</Link>
+          
+          {/* 🚀 FIXED: Native HTML Override to bypass Next.js Server Component function blocks! */}
           <div dangerouslySetInnerHTML={{ __html: `<button onclick="window.print()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg transition-all">🖨️ Print / Save PDF</button>` }} />
+          
         </div>
       </div>
 
@@ -55,7 +54,7 @@ export default async function AgentReceiptPage(props: PageProps) {
           <div className="font-semibold text-gray-600">Full Name:</div><div className="font-bold">{app.firstName} {app.lastName}</div>
           <div className="font-semibold text-gray-600">Phone:</div><div className="font-bold">{app.phone || '—'}</div>
           <div className="font-semibold text-gray-600">Address:</div><div className="font-bold">{app.address || '—'}</div>
-          <div className="font-semibold text-gray-600">Birth Date:</div><div className="font-bold">{safeBirthDate}</div>
+          <div className="font-semibold text-gray-600">Birth Date:</div><div className="font-bold">{app.birthDate ? new Date(app.birthDate).toLocaleDateString() : '—'}</div>
         </div>
         
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-blue-900">2. Territory & Capacity</h2>
@@ -73,7 +72,7 @@ export default async function AgentReceiptPage(props: PageProps) {
           <div className="col-span-2 font-medium italic text-gray-700">{app.collateralCondition || '—'}</div>
         </div>
 
-        {/* 🚀 PUNCTUATION FIXED: The full Tagalog agreement, safe for Vercel compilation */}
+        {/* 🚀 EXACT MATCH: FULL TAGALOG AGREEMENT */}
         <h2 className="font-bold text-lg border-b-2 border-gray-300 pb-1 mb-3 uppercase text-rose-900 mt-6">4. Mga Tungkulin at Responsibilidad (Agreement)</h2>
         <div className="text-sm mb-6 pl-2 text-gray-800 space-y-4 leading-relaxed">
           <p className="font-bold uppercase">Bilang Field Agent at Co-Maker, sumasang-ayon ako sa sumusunod:</p>
@@ -110,7 +109,7 @@ export default async function AgentReceiptPage(props: PageProps) {
             <div className="p-4 inline-block bg-gray-50 border-2 border-gray-300 rounded-lg">
               <img src={app.digitalSignature} alt="Digital Signature" style={{ maxHeight: '100px', filter: 'invert(1) contrast(200%)' }} />
             </div>
-            <p className="text-xs text-gray-500 mt-2 font-bold uppercase">Signatory / Co-Maker: {app.firstName} {app.lastName}</p>
+            <p className="text-xs text-gray-500 mt-2 font-bold uppercase">Signatory: {app.firstName} {app.lastName}</p>
           </div>
         )}
 
