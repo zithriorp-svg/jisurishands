@@ -3,28 +3,21 @@ import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/db";
 import { getActivePortfolio } from "@/lib/portfolio";
 
-// 🚀 CRITICAL: We tell Vercel this route must process dynamic database data on every call
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    // 1. SECURE API KEY CHECK
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "Matrix Offline: Missing GEMINI_API_KEY in Vercel Environment Variables." }, 
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Matrix Offline: Missing GEMINI_API_KEY in Vercel Environment Variables." }, { status: 500 });
     }
 
-    // 2. EXTRACT COMMANDER'S MESSAGE
     const body = await req.json();
     const { message, customPrompt } = body;
     if (!message) {
       return NextResponse.json({ error: "Empty query received." }, { status: 400 });
     }
 
-    // 3. FETCH LIVE VAULT TELEMETRY
     const portfolio = await getActivePortfolio();
     
     const loans = await prisma.loan.findMany({
@@ -38,7 +31,6 @@ export async function POST(req: Request) {
     const capitalTxs = await prisma.capitalTransaction.findMany({ where: { portfolio } });
     const expenses = await prisma.expense.findMany({ where: { portfolio } });
 
-    // Calculate Strict Math
     let totalDeposits = 0; let totalWithdrawals = 0; let totalExpenses = 0;
     capitalTxs.forEach(tx => { if (tx.type === "DEPOSIT") totalDeposits += Number(tx.amount); else totalWithdrawals += Number(tx.amount); });
     expenses.forEach(exp => { totalExpenses += Number(exp.amount); });
@@ -77,7 +69,6 @@ export async function POST(req: Request) {
     const vaultCash = totalDeposits + totalCollected + totalInterest - totalWithdrawals - totalDisbursed - totalExpenses;
     const deployableCapital = vaultCash * 0.85;
 
-    // 4. PACKAGE DATA FOR AI
     const systemContext = `
       LIVE VAULT TELEMETRY FOR PORTFOLIO: "${portfolio}"
       - Available Vault Cash: ₱${vaultCash.toLocaleString('en-US', {minimumFractionDigits: 2})}
@@ -93,12 +84,10 @@ export async function POST(req: Request) {
       COMMANDER'S REQUEST: ${message}
     `;
 
-    // 5. AWAKEN THE MATRIX COPILOT
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Force SDK compatibility with gemini-1.5-flash
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // 🚀 RESTORED: Natively compatible 2.5 Flash model
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    // Combine custom persona with live data
     const finalPrompt = `${customPrompt || "You are the Vault AI Core. Answer concisely."}\n\n${systemContext}`;
 
     const result = await model.generateContent(finalPrompt);
@@ -108,9 +97,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("AI Forecaster Error:", error);
-    return NextResponse.json(
-      { error: `Matrix Offline: ${error.message || "Unknown Core Failure"}` }, 
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `Matrix Offline: ${error.message || "Unknown Core Failure"}` }, { status: 500 });
   }
 }
