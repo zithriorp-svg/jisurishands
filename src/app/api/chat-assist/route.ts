@@ -7,7 +7,8 @@ export async function POST(req: Request) {
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "Missing API Key in Vercel Environment." }, { status: 500 });
 
-    const { clientId } = await req.json();
+    // 🚀 NEW: Extracting the 'model' choice from the frontend!
+    const { clientId, model } = await req.json();
 
     const client = await prisma.client.findUnique({
       where: { id: clientId },
@@ -43,8 +44,8 @@ export async function POST(req: Request) {
     const recentChat = client.messages.reverse().map(m => `${m.sender}: ${m.text}`).join('\n');
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // 🚀 RESTORED: Natively compatible 2.5 Flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // 🚀 DYNAMIC SWITCH: Defaults to 2.5-flash
+    const geminiModel = genAI.getGenerativeModel({ model: model || "gemini-2.5-flash" });
 
     const prompt = `You are a highly strategic, firm, and professional FinTech Collection Agent for the "FinTech Vault" system.
 
@@ -66,7 +67,7 @@ Read the chat history and draft a response to the client.
 OUTPUT:
 Provide ONLY the exact message text you want to send. Do not include quotes, greetings like "Here is your draft", or any other formatting.`;
 
-    const result = await model.generateContent(prompt);
+    const result = await geminiModel.generateContent(prompt);
     return NextResponse.json({ reply: result.response.text().trim() });
 
   } catch (error: any) {
