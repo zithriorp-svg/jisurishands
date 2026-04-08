@@ -9,8 +9,8 @@ export default function MatrixCopilot() {
   const [showSettings, setShowSettings] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
-  // 🚀 NEW: State for the AI Model
-  const [aiModel, setAiModel] = useState("gemini-2.5-flash");
+  // 🚀 OMNI-SWITCHER DEFAULT
+  const [aiModel, setAiModel] = useState("gemini-1.5-flash-latest");
   
   const defaultPrompt = `You are the Vault AI Core—the hyper-proactive, assertive intelligence operating a premier Micro-Lending Institution in the Philippines.
 
@@ -91,7 +91,6 @@ RESPONSE STYLE:
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 🚀 PASSED: Send the chosen model to the backend
         body: JSON.stringify({ message: userMessage, customPrompt: customBrain, model: aiModel })
       });
 
@@ -103,7 +102,7 @@ RESPONSE STYLE:
     } catch (error: any) {
       console.error("AI Forecaster Error:", error);
       setHasError(true);
-      setMessages(prev => [...prev, { role: 'ai', content: `**ERROR:** Connection to AI Core severed. \n\n*Diagnostic:* ${error.message}` }]);
+      setMessages(prev => [...prev, { role: 'ai', content: `**ERROR:** Connection to AI Core severed. \n\n*Diagnostic:* ${error.message}\n\n*Solution:* Open settings ⚙️ and switch to a different AI model from the dropdown.` }]);
     } finally {
       setIsLoading(false);
     }
@@ -179,17 +178,30 @@ RESPONSE STYLE:
                 <button onClick={() => setShowSettings(false)} className="text-[10px] text-zinc-500 hover:text-white uppercase font-bold">Close X</button>
               </div>
               
-              {/* 🚀 NEW: Dropdown Model Switcher */}
+              {/* 🚀 THE OMNI-SWITCHER: Every valid Google Gemini API Model String */}
               <select 
                 value={aiModel} 
                 onChange={(e) => saveModel(e.target.value)}
                 className="bg-zinc-900 border border-emerald-900/50 text-emerald-400 text-xs font-bold rounded-lg p-2 outline-none focus:border-emerald-500"
               >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Default)</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Heavy)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast/Stable)</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="gemini-pro">Gemini Pro (Legacy Fallback)</option>
+                <optgroup label="Latest Stable Models">
+                  <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Latest/Fastest)</option>
+                  <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (Latest/Smartest)</option>
+                  <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B (High Speed)</option>
+                </optgroup>
+                <optgroup label="Standard Models">
+                  <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                  <option value="gemini-1.0-pro">Gemini 1.0 Pro</option>
+                </optgroup>
+                <optgroup label="Experimental / Beta">
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                </optgroup>
+                <optgroup label="Legacy Fallbacks">
+                  <option value="gemini-pro">Gemini Pro (Legacy)</option>
+                </optgroup>
               </select>
 
               <label className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-2">AI Brain Configurations (System Prompt)</label>
@@ -241,3 +253,4 @@ RESPONSE STYLE:
     </div>
   );
 }
+
