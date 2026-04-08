@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 
 export async function POST(req: Request) {
   try {
-    // 🚀 FAILSAFE: Checks both common Vercel API Key names
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "Missing API Key in Vercel Environment." }, { status: 500 });
 
@@ -30,7 +29,6 @@ export async function POST(req: Request) {
     let totalRemaining = 0;
     
     client.loans.forEach(loan => {
-       // 🚀 STRICT MATH: Teach the AI the exact remaining balance
        const computedTotalRepayment = loan.installments.reduce((sum, inst) => sum + Number(inst.expectedAmount), 0);
        const safeTotalRepayment = computedTotalRepayment > 0 ? computedTotalRepayment : Number(loan.totalRepayment);
        const totalPaid = loan.payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -45,8 +43,8 @@ export async function POST(req: Request) {
     const recentChat = client.messages.reverse().map(m => `${m.sender}: ${m.text}`).join('\n');
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // 🚀 STABILITY FIX: Forced to 1.5-flash for maximum SDK compatibility
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // 🚀 RESTORED: Natively compatible 2.5 Flash model
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `You are a highly strategic, firm, and professional FinTech Collection Agent for the "FinTech Vault" system.
 
