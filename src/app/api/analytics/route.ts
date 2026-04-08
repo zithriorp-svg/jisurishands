@@ -2,440 +2,191 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getActivePortfolio } from "@/lib/portfolio";
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const portfolio = await getActivePortfolio();
 
-    // ====== CHART 1: LIQUIDITY TOPOGRAPHY (30-Day Rolling Balance) ======
-    const today = new Date();
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    // Get all capital transactions in last 30 days
-    const capitalTransactions = await prisma.capitalTransaction.findMany({
-      where: {
-        portfolio,
-        date: { gte: thirtyDaysAgo }
-      },
-      orderBy: { date: 'asc' }
-    });
-
-    // Get all loans (disbursements) in last 30 days
     const loans = await prisma.loan.findMany({
-      where: {
-        portfolio,
-        startDate: { gte: thirtyDaysAgo }
-      },
-      select: { principal: true, startDate: true }
-    });
-
-    // Get all payments in last 30 days
-    const loanIds = (await prisma.loan.findMany({
       where: { portfolio },
-      select: { id: true }
-    })).map(l => l.id);
-
-    const payments = await prisma.payment.findMany({
-      where: {
-        loanId: { in: loanIds },
-        paymentDate: { gte: thirtyDaysAgo }
-      },
-      select: { amount: true, principalPortion: true, interestPortion: true, paymentDate: true }
-    });
-
-    // Get manual expenses in last 30 days
-    const expenses = await prisma.expense.findMany({
-      where: {
-        portfolio,
-        date: { gte: thirtyDaysAgo }
-      },
-      select: { amount: true, date: true }
-    });
-
-    // 🚀 UPGRADED: Get Agent Commissions from Ledger in last 30 days
-    const commissions = await prisma.ledger.findMany({
-      where: {
-        portfolio,
-        debitAccount: "Commission Expense",
-        createdAt: { gte: thirtyDaysAgo }
-      },
-      select: { amount: true, createdAt: true }
-    });
-
-    // Build daily liquidity data
-    const liquidityData: { date: string; balance: number; inflows: number; outflows: number }[] = [];
-    let runningBalance = 0;
-
-    // Calculate starting balance (all transactions before 30 days ago)
-    const allCapitalTx = await prisma.capitalTransaction.findMany({ where: { portfolio } });
-    const allLoans = await prisma.loan.findMany({ where: { portfolio } });
-    const allPayments = await prisma.payment.findMany({ where: { loanId: { in: loanIds } } });
-    const allExpenses = await prisma.expense.findMany({ where: { portfolio } });
-    const allCommissions = await prisma.ledger.findMany({ 
-      where: { portfolio, debitAccount: "Commission Expense" } 
-    });
-
-    // Initial vault = deposits - withdrawals - disbursements + collections - manual expenses - commissions
-    allCapitalTx.forEach(tx => {
-      if (new Date(tx.date) < thirtyDaysAgo) {
-        runningBalance += tx.type === "DEPOSIT" ? Number(tx.amount) : -Number(tx.amount);
+      include: {
+        installments: { orderBy: { period: 'asc' } },
+        payments: { where: { status: 'Paid' }, orderBy: { paymentDate: 'asc' } }
       }
     });
-
-    allLoans.forEach(loan => {
-      if (new Date(loan.startDate) < thirtyDaysAgo) {
-        runningBalance -= Number(loan.principal);
-      }
+    
+    const ledgers = await prisma.ledger.findMany({
+      where: { portfolio },
+      orderBy: { createdAt: 'asc' }
     });
 
-    allPayments.forEach(p => {
-      if (new Date(p.paymentDate) < thirtyDaysAgo) {
-        runningBalance += Number(p.amount);
-      }
+    const capitalTxs = await prisma.capitalTransaction.findMany({ where: { portfolio } });
+    const expenses = await prisma.expense.findMany({ where: { portfolio } });
+
+    let currentVaultCash = 0;
+    let outstandingPrincipal = 0;
+    let totalDisbursed = 0;
+    let totalCollected = 0;
+    let totalInterestCollected = 0;
+    let totalDeposits = 0;
+    let totalWithdrawals = 0;
+    let totalExpenseAmount = 0;
+
+    capitalTxs.forEach(tx => {
+      if (tx.type === "DEPOSIT") totalDeposits += Number(tx.amount);
+      else totalWithdrawals += Number(tx.amount);
     });
 
-    allExpenses.forEach(exp => {
-      if (new Date(exp.date) < thirtyDaysAgo) {
-        runningBalance -= Number(exp.amount);
-      }
+    expenses.forEach(exp => { totalExpenseAmount += Number(exp.amount); });
+
+    // 🚀 STRICT RECALCULATION ALGORITHM
+    loans.forEach(loan => {
+      const loanDisbursed = Number(loan.principal);
+      totalDisbursed += loanDisbursed;
+      
+      const loanCollectedPrincipal = loan.payments.reduce((sum, p) => sum + Number(p.principalPortion), 0);
+      const loanCollectedInterest = loan.payments.reduce((sum, p) => sum + Number(p.interestPortion), 0);
+      
+      totalCollected += loanCollectedPrincipal;
+      totalInterestCollected += loanCollectedInterest;
+      
+      // Strict Outstanding
+      outstandingPrincipal += Math.max(0, loanDisbursed - loanCollectedPrincipal);
     });
 
-    allCommissions.forEach(comm => {
-      if (new Date(comm.createdAt) < thirtyDaysAgo) {
-        runningBalance -= Number(comm.amount);
+    // Vault Cash = Deposits + Principal Collected + Interest Collected - Withdrawals - Disbursements - Expenses
+    currentVaultCash = totalDeposits + totalCollected + totalInterestCollected - totalWithdrawals - totalDisbursed - totalExpenseAmount;
+
+    let activeLoans = 0;
+    let activeDisbursedPrincipal = 0;
+    let portfolioAtRisk = 0;
+    let loansAtRiskCount = 0;
+    let penaltyRevenue = 0;
+    let lateInstallmentsCount = 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    loans.forEach(loan => {
+      if (loan.status === 'ACTIVE') {
+        activeLoans++;
+        activeDisbursedPrincipal += Number(loan.principal);
       }
-    });
+      
+      let isAtRisk = false;
+      const loanCollectedPrincipal = loan.payments.reduce((sum, p) => sum + Number(p.principalPortion), 0);
+      const remainingLoanPrincipal = Math.max(0, Number(loan.principal) - loanCollectedPrincipal);
 
-    // Now build daily data for last 30 days
-    for (let i = 0; i <= 30; i++) {
-      const date = new Date(thirtyDaysAgo);
-      date.setDate(thirtyDaysAgo.getDate() + i);
-      const dateStr = date.toISOString().split('T')[0];
-      const dayStart = new Date(date);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(date);
-      dayEnd.setHours(23, 59, 59, 999);
-
-      let dayInflows = 0;
-      let dayOutflows = 0;
-
-      // Capital deposits
-      capitalTransactions.forEach(tx => {
-        const txDate = new Date(tx.date).toISOString().split('T')[0];
-        if (txDate === dateStr) {
-          if (tx.type === "DEPOSIT") {
-            dayInflows += Number(tx.amount);
-          } else {
-            dayOutflows += Number(tx.amount);
-          }
+      loan.installments.forEach(inst => {
+        penaltyRevenue += Number(inst.penaltyFee || 0);
+        if ((inst.status === 'LATE' || inst.status === 'MISSED' || inst.status === 'PENDING') && new Date(inst.dueDate) < today) {
+          lateInstallmentsCount++;
+          isAtRisk = true;
         }
       });
 
-      // Loan disbursements (outflow)
-      loans.forEach(loan => {
-        const loanDate = new Date(loan.startDate).toISOString().split('T')[0];
-        if (loanDate === dateStr) {
-          dayOutflows += Number(loan.principal);
-        }
-      });
+      if (isAtRisk && loan.status === 'ACTIVE') {
+        loansAtRiskCount++;
+        portfolioAtRisk += remainingLoanPrincipal;
+      }
+    });
 
-      // Payments (inflow)
-      payments.forEach(p => {
-        const pDate = new Date(p.paymentDate).toISOString().split('T')[0];
-        if (pDate === dateStr) {
-          dayInflows += Number(p.amount);
-        }
-      });
+    const totalClients = new Set(loans.map(l => l.clientId)).size;
+    const avgLoanSize = loans.length > 0 ? totalDisbursed / loans.length : 0;
+    const capitalUtilizationRatio = currentVaultCash + activeDisbursedPrincipal > 0 ? (activeDisbursedPrincipal / (currentVaultCash + activeDisbursedPrincipal)) * 100 : 0;
+    const netInterestMargin = totalInterestCollected - totalExpenseAmount;
+    const costToIncomeRatio = totalInterestCollected > 0 ? (totalExpenseAmount / totalInterestCollected) * 100 : totalExpenseAmount > 0 ? 100 : 0;
 
-      // Manual Expenses (outflow)
-      expenses.forEach(exp => {
-        const expDate = new Date(exp.date).toISOString().split('T')[0];
-        if (expDate === dateStr) {
-          dayOutflows += Number(exp.amount);
-        }
-      });
-
-      // Agent Commissions (outflow)
-      commissions.forEach(comm => {
-        const commDate = new Date(comm.createdAt).toISOString().split('T')[0];
-        if (commDate === dateStr) {
-          dayOutflows += Number(comm.amount);
-        }
-      });
-
-      runningBalance += dayInflows - dayOutflows;
-
-      liquidityData.push({
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        balance: runningBalance,
-        inflows: dayInflows,
-        outflows: dayOutflows
-      });
+    // LIQUIDITY TOPOGRAPHY
+    let runningBalance = totalDeposits; 
+    const liquidityMap = new Map<string, { balance: number, in: number, out: number }>();
+    
+    // Fill last 30 days to ensure continuous chart
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      liquidityMap.set(dateStr, { balance: 0, in: 0, out: 0 });
     }
 
-    // ====== CHART 2: CASH FLOW PIPELINE ======
-    const totalDeposits = allCapitalTx
-      .filter(tx => tx.type === "DEPOSIT")
-      .reduce((sum, tx) => sum + Number(tx.amount), 0);
+    ledgers.forEach(l => {
+      const dateStr = new Date(l.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (liquidityMap.has(dateStr)) {
+        const entry = liquidityMap.get(dateStr)!;
+        if (l.debitAccount === "Vault Cash") { runningBalance += Number(l.amount); entry.in += Number(l.amount); }
+        if (l.creditAccount === "Vault Cash") { runningBalance -= Number(l.amount); entry.out += Number(l.amount); }
+        entry.balance = runningBalance;
+      }
+    });
 
-    const totalWithdrawals = allCapitalTx
-      .filter(tx => tx.type === "WITHDRAWAL")
-      .reduce((sum, tx) => sum + Number(tx.amount), 0);
+    let lastKnownBalance = 0;
+    const liquidityData = Array.from(liquidityMap.entries()).map(([date, data]) => {
+      if (data.balance > 0 || data.in > 0 || data.out > 0) { lastKnownBalance = data.balance; } 
+      else { data.balance = lastKnownBalance; }
+      return { date, balance: data.balance, inflows: data.in, outflows: data.out };
+    });
 
-    const totalDisbursed = allLoans.reduce((sum, loan) => sum + Number(loan.principal), 0);
-
-    const totalCollected = allPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalPrincipalCollected = allPayments.reduce((sum, p) => sum + Number(p.principalPortion), 0);
-    const totalInterestCollected = allPayments.reduce((sum, p) => sum + Number(p.interestPortion), 0);
-
-    const manualExpenseAmount = allExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
-    const commissionExpenseAmount = allCommissions.reduce((sum, comm) => sum + Number(comm.amount), 0);
-    
-    // 🚀 UPGRADED: Total Expenses now mathematically includes Agent Commissions
-    const totalExpenseAmount = manualExpenseAmount + commissionExpenseAmount;
-
-    const currentVaultCash = totalDeposits - totalWithdrawals - totalDisbursed + totalCollected - totalExpenseAmount;
-    const outstandingPrincipal = totalDisbursed - totalPrincipalCollected;
-
+    // CASH FLOW PIPELINE
     const cashFlowData = [
-      { name: 'Capital In', value: totalDeposits, type: 'inflow' },
-      { name: 'Withdrawals', value: totalWithdrawals, type: 'outflow' },
-      { name: 'Vault Cash', value: currentVaultCash, type: 'balance' },
-      { name: 'Disbursed', value: totalDisbursed, type: 'outflow' },
-      { name: 'Collected', value: totalCollected, type: 'inflow' },
-      { name: 'Expenses', value: totalExpenseAmount, type: 'outflow' }
+      { name: "Capital In", value: Number(totalDeposits.toFixed(2)), type: "inflow" },
+      { name: "Withdrawals", value: Number(totalWithdrawals.toFixed(2)), type: "outflow" },
+      { name: "Vault Cash", value: Number(currentVaultCash.toFixed(2)), type: "balance" },
+      { name: "Disbursed", value: Number(totalDisbursed.toFixed(2)), type: "outflow" },
+      { name: "Collected", value: Number((totalCollected + totalInterestCollected).toFixed(2)), type: "inflow" },
+      { name: "Expenses", value: Number(totalExpenseAmount.toFixed(2)), type: "outflow" }
     ];
 
-    // ====== CHART 3: PORTFOLIO HEALTH (Installment Status) ======
-    const installments = await prisma.loanInstallment.findMany({
-      where: {
-        loan: { portfolio }
-      },
-      select: { status: true, expectedAmount: true, amountPaid: true }
+    // VELOCITY (6 MONTHS)
+    const velocityMap = new Map();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(); d.setMonth(d.getMonth() - i);
+      velocityMap.set(d.toLocaleDateString('en-US', { month: 'short' }), { lent: 0, collected: 0, interest: 0 });
+    }
+
+    loans.forEach(loan => {
+      const month = new Date(loan.startDate).toLocaleDateString('en-US', { month: 'short' });
+      if (velocityMap.has(month)) velocityMap.get(month)!.lent += Number(loan.principal);
+      
+      loan.payments.forEach(p => {
+        const pMonth = new Date(p.paymentDate).toLocaleDateString('en-US', { month: 'short' });
+        if (velocityMap.has(pMonth)) {
+          velocityMap.get(pMonth)!.collected += Number(p.principalPortion);
+          velocityMap.get(pMonth)!.interest += Number(p.interestPortion);
+        }
+      });
     });
 
-    const paidInstallments = installments.filter(i => i.status === 'PAID');
-    const pendingInstallments = installments.filter(i => i.status === 'PENDING');
-    const lateInstallments = installments.filter(i => i.status === 'LATE' || i.status === 'MISSED');
-    const partialInstallments = installments.filter(i => i.status === 'PARTIAL');
+    const velocityData = Array.from(velocityMap.entries()).map(([month, data]) => ({
+      month, lent: Number(data.lent.toFixed(2)), collected: Number(data.collected.toFixed(2)), interest: Number(data.interest.toFixed(2))
+    }));
+
+    // HEALTH DATA
+    const healthCounts = { paid: 0, pending: 0, late: 0 };
+    const healthAmounts = { paid: 0, pending: 0, late: 0 };
+
+    loans.forEach(l => l.installments.forEach(i => {
+      const amt = Number(i.expectedAmount);
+      if (i.status === 'PAID') { healthCounts.paid++; healthAmounts.paid += amt; }
+      else if (i.status === 'LATE' || i.status === 'MISSED') { healthCounts.late++; healthAmounts.late += amt; }
+      else { healthCounts.pending++; healthAmounts.pending += amt; }
+    }));
 
     const portfolioHealthData = [
-      { name: 'Paid', value: paidInstallments.length, amount: paidInstallments.reduce((s, i) => s + Number(i.amountPaid), 0), color: '#10b981' },
-      { name: 'Pending', value: pendingInstallments.length, amount: pendingInstallments.reduce((s, i) => s + Number(i.expectedAmount), 0), color: '#eab308' },
-      { name: 'Late', value: lateInstallments.length, amount: lateInstallments.reduce((s, i) => s + Number(i.expectedAmount), 0), color: '#ef4444' },
-      { name: 'Partial', value: partialInstallments.length, amount: partialInstallments.reduce((s, i) => s + Number(i.expectedAmount) - Number(i.amountPaid), 0), color: '#f97316' }
+      { name: "Paid", value: healthCounts.paid, amount: healthAmounts.paid, color: "#34d399" },
+      { name: "Pending", value: healthCounts.pending, amount: healthAmounts.pending, color: "#fbbf24" },
+      { name: "Late/Missed", value: healthCounts.late, amount: healthAmounts.late, color: "#fb7185" }
     ].filter(d => d.value > 0);
 
-    // ====== CHART 4: VELOCITY - LENT VS COLLECTED (6 Months) ======
-    const velocityData: { month: string; lent: number; collected: number; interest: number }[] = [];
-
-    for (let i = 5; i >= 0; i--) {
-      const monthStart = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 0, 23, 59, 59, 999);
-      const monthName = monthStart.toLocaleDateString('en-US', { month: 'short' });
-
-      // Loans disbursed this month
-      const monthLoans = await prisma.loan.findMany({
-        where: {
-          portfolio,
-          startDate: { gte: monthStart, lte: monthEnd }
-        },
-        select: { principal: true }
-      });
-      const monthLent = monthLoans.reduce((sum, l) => sum + Number(l.principal), 0);
-
-      // Payments collected this month
-      const monthPayments = await prisma.payment.findMany({
-        where: {
-          loanId: { in: loanIds },
-          paymentDate: { gte: monthStart, lte: monthEnd }
-        },
-        select: { principalPortion: true, interestPortion: true }
-      });
-      const monthCollected = monthPayments.reduce((sum, p) => sum + Number(p.principalPortion), 0);
-      const monthInterest = monthPayments.reduce((sum, p) => sum + Number(p.interestPortion), 0);
-
-      velocityData.push({
-        month: monthName,
-        lent: monthLent,
-        collected: monthCollected,
-        interest: monthInterest
-      });
-    }
-
-    // ====== CHART 5: CASH FLOW VELOCITY (90 Days Weekly) ======
-    const cashFlowVelocityData: { week: string; capitalOut: number; capitalIn: number }[] = [];
-    const ninetyDaysAgo = new Date(today);
-    ninetyDaysAgo.setDate(today.getDate() - 90);
-
-    // Aggregate by week for last 90 days
-    for (let week = 0; week < 13; week++) {
-      const weekStart = new Date(ninetyDaysAgo);
-      weekStart.setDate(ninetyDaysAgo.getDate() + (week * 7));
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-
-      const weekLabel = `W${week + 1}`;
-
-      // Capital Out: Loans disbursed this week
-      const weekLoans = await prisma.loan.findMany({
-        where: {
-          portfolio,
-          startDate: { gte: weekStart, lte: weekEnd }
-        },
-        select: { principal: true }
-      });
-      const capitalOut = weekLoans.reduce((sum, l) => sum + Number(l.principal), 0);
-
-      // Capital In: Payments collected this week (principal + interest)
-      const weekPayments = await prisma.payment.findMany({
-        where: {
-          loanId: { in: loanIds },
-          paymentDate: { gte: weekStart, lte: weekEnd }
-        },
-        select: { amount: true }
-      });
-      const capitalIn = weekPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-
-      cashFlowVelocityData.push({
-        week: weekLabel,
-        capitalOut,
-        capitalIn
-      });
-    }
-
-    // ====== SUMMARY STATS ======
-    const activeLoans = await prisma.loan.count({
-      where: { portfolio, status: 'ACTIVE' }
-    });
-
-    const totalClients = await prisma.client.count({
-      where: { portfolio }
-    });
-
-    const avgLoanSize = totalDisbursed / (activeLoans || 1);
-
-    // ====== O1A: ENTERPRISE KPI METRICS ======
-    
-    // KPI 1: Capital Utilization Ratio
-    // (Total Active Disbursed Principal / Total Capital Deposits) * 100
-    const activeLoansData = await prisma.loan.findMany({
-      where: { portfolio, status: 'ACTIVE' },
-      select: { principal: true, payments: { select: { principalPortion: true } } }
-    });
-    
-    const activeDisbursedPrincipal = activeLoansData.reduce((sum, loan) => {
-      const paidPrincipal = loan.payments.reduce((pSum, p) => pSum + Number(p.principalPortion), 0);
-      return sum + (Number(loan.principal) - paidPrincipal);
-    }, 0);
-    
-    const capitalUtilizationRatio = totalDeposits > 0 
-      ? (activeDisbursedPrincipal / totalDeposits) * 100 
-      : 0;
-
-    // KPI 2: Cost-to-Income Ratio (CIR)
-    // (Total Operating Expenses / Total Interest Income) * 100
-    const costToIncomeRatio = totalInterestCollected > 0 
-      ? (totalExpenseAmount / totalInterestCollected) * 100 
-      : 0;
-
-    // KPI 3: Portfolio at Risk (PAR)
-    // Sum of outstanding principal of loans that have at least one LATE installment
-    const lateInstallmentsForPAR = await prisma.loanInstallment.findMany({
-      where: {
-        status: { in: ['LATE', 'MISSED'] },
-        loan: { portfolio }
-      },
-      select: { loanId: true }
-    });
-    
-    const loansWithLateInstallments = [...new Set(lateInstallmentsForPAR.map(i => i.loanId))];
-    
-    const loansAtRisk = await prisma.loan.findMany({
-      where: {
-        id: { in: loansWithLateInstallments }
-      },
-      include: {
-        payments: { select: { principalPortion: true } }
-      }
-    });
-    
-    const portfolioAtRisk = loansAtRisk.reduce((sum, loan) => {
-      const paidPrincipal = loan.payments.reduce((pSum, p) => pSum + Number(p.principalPortion), 0);
-      const outstandingPrincipal = Number(loan.principal) - paidPrincipal;
-      return sum + outstandingPrincipal;
-    }, 0);
-
-    // ====== RCI: REVENUE & COLLECTIONS INTELLIGENCE METRICS ======
-    
-    // RCI 1: Net Interest Margin (NIM)
-    // Total Interest Collected - Total Operating Expenses
-    const netInterestMargin = totalInterestCollected - totalExpenseAmount;
-    
-    // RCI 2: At-Risk Capital
-    // Sum of expectedAmount for LATE installments
-    const lateInstallmentsForRCI = await prisma.loanInstallment.findMany({
-      where: {
-        status: { in: ['LATE', 'MISSED'] },
-        loan: { portfolio }
-      },
-      select: { expectedAmount: true, principal: true }
-    });
-    
-    const atRiskCapital = lateInstallmentsForRCI.reduce((sum, inst) => {
-      return sum + Number(inst.principal); // Principal at risk
-    }, 0);
-    
-    // RCI 3: Penalty Revenue
-    // Sum of all penaltyFee amounts
-    const allInstallmentsForPenalty = await prisma.loanInstallment.findMany({
-      where: { loan: { portfolio } },
-      select: { penaltyFee: true }
-    });
-    
-    const penaltyRevenue = allInstallmentsForPenalty.reduce((sum, inst) => {
-      return sum + Number(inst.penaltyFee || 0);
-    }, 0);
-
     return NextResponse.json({
-      portfolio,
-      liquidityData,
-      cashFlowData,
-      portfolioHealthData,
-      velocityData,
-      cashFlowVelocityData,
-      summary: {
-        currentVaultCash,
-        outstandingPrincipal,
-        totalDeposits,
-        totalWithdrawals,
-        totalDisbursed,
-        totalCollected,
-        totalInterestCollected,
-        totalExpenseAmount,
-        activeLoans,
-        totalClients,
-        avgLoanSize
-      },
-      enterpriseKPIs: {
-        capitalUtilizationRatio,
-        costToIncomeRatio,
-        portfolioAtRisk,
-        activeDisbursedPrincipal,
-        loansAtRiskCount: loansWithLateInstallments.length
-      },
-      rciMetrics: {
-        netInterestMargin,
-        atRiskCapital,
-        penaltyRevenue,
-        lateInstallmentsCount: lateInstallmentsForRCI.length
-      }
+      portfolio, liquidityData, cashFlowData, portfolioHealthData, velocityData,
+      summary: { currentVaultCash, outstandingPrincipal, totalDeposits, totalWithdrawals, totalDisbursed, totalCollected, totalInterestCollected, totalExpenseAmount, activeLoans, totalClients, avgLoanSize },
+      enterpriseKPIs: { capitalUtilizationRatio, costToIncomeRatio, portfolioAtRisk, activeDisbursedPrincipal, loansAtRiskCount },
+      rciMetrics: { netInterestMargin, atRiskCapital: portfolioAtRisk, penaltyRevenue, lateInstallmentsCount }
     });
-  } catch (error) {
-    console.error('Analytics API error:', error);
-    return NextResponse.json({ error: 'Failed to fetch analytics data' }, { status: 500 });
+
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
