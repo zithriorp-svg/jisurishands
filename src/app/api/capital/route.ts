@@ -36,10 +36,11 @@ export async function POST(req: Request) {
     const amount = parseFloat(formData.get("amount") as string);
     const type = formData.get("type") as string;
     const description = formData.get("description") as string || null;
+    
     if (!amount || amount <= 0) return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     if (!type || !["DEPOSIT", "WITHDRAWAL"].includes(type)) return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     
-    // Create capital transaction AND AuditLog in a transaction
+    // 🚀 STRICT SYNC: We now write to the Capital DB, Audit Log, AND the Ledger simultaneously!
     const [transaction] = await prisma.$transaction([
       prisma.capitalTransaction.create({ 
         data: { amount, type, description, portfolio } 
@@ -52,6 +53,19 @@ export async function POST(req: Request) {
           referenceType: "CAPITAL",
           description: `Capital ${type.toLowerCase()}: ${description || 'No description'} (₱${amount.toLocaleString()})`,
           portfolio
+        }
+      }),
+      // 🏦 CRITICAL NEW PIECE: The Ledger Entry so the Treasury can see the money!
+      prisma.ledger.create({
+        data: {
+          transactionType: type === "DEPOSIT" ? "Capital Injection" : "Owner Withdrawal",
+          amount: amount,
+          // Double-Entry Math: 
+          // Deposit = Vault Cash (Debit) goes UP, Owner Equity (Credit) goes UP
+          // Withdrawal = Owner Equity (Debit) goes DOWN, Vault Cash (Credit) goes DOWN
+          debitAccount: type === "DEPOSIT" ? "Vault Cash" : "Owner Equity",
+          creditAccount: type === "DEPOSIT" ? "Owner Equity" : "Vault Cash",
+          portfolio: portfolio
         }
       })
     ]);
