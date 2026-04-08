@@ -17,10 +17,9 @@ const formatDate = (date: Date | string): string => {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-// 🚀 ADDED: fbProfileUrl included in the interface
 interface Loan {
   id: number;
-  client: { firstName: string; lastName: string; phone?: string; fbProfileUrl?: string | null };
+  client: { firstName: string; lastName: string; phone?: string; fbProfileUrl?: string | null; messengerId?: string | null };
   principal: number;
   interestRate: number;
   termDuration: number;
@@ -42,6 +41,56 @@ interface ScheduleItem {
 interface LoanOption {
   id: number; clientId: number; client: { firstName: string; lastName: string };
 }
+
+// 🚀 ROBUST CLIPBOARD INJECTOR
+const copyToClipboard = (text: string) => {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(err => console.error("Clipboard copy failed", err));
+  } else {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "absolute";
+    textArea.style.left = "-999999px";
+    document.body.prepend(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+    } catch (error) {
+      console.error(error);
+    } finally {
+      textArea.remove();
+    }
+  }
+};
+
+// 🚀 GENERATE TEXT RECEIPT FOR MESSENGER
+const generateTextReceipt = (
+  paymentResult: any,
+  loanData: Loan,
+  paymentType: "INTEREST" | "PRINCIPAL" | "FULL",
+  installment: { period: number; totalPeriods: number }
+) => {
+  const date = new Date(paymentResult.payment.paymentDate).toLocaleDateString('en-PH', { 
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+  });
+  
+  return `🧾 *OFFICIAL RECEIPT*
+Receipt No: RCP-${paymentResult.payment.id.toString().padStart(6, '0')}
+Date: ${date}
+
+👤 *CLIENT INFO*
+Name: ${paymentResult.loan.clientName}
+Loan ID: TXN-${paymentResult.loan.id.toString().padStart(4, '0')}
+Installment: ${installment.period} of ${installment.totalPeriods}
+
+💰 *PAYMENT DETAILS*
+Type: ${paymentType === "INTEREST" ? "Interest Only" : paymentType === "PRINCIPAL" ? "Principal Only" : "Full Payment"}
+Amount Paid: ${formatCurrency(paymentResult.payment.amount)}
+Remaining Balance: ${formatCurrency(paymentResult.payment.remainingBalance)}
+
+Thank you for your payment!
+- FinTech Vault`;
+};
 
 const generateReceipt = async (
   paymentResult: any,
@@ -152,11 +201,22 @@ const InstallmentCard = ({ item, totalPeriods, loanData, onPaymentSuccess }: { i
       const result = await processSplitPaymentAction(item.id, type);
       
       if (result.success && result.payment && result.loan) {
+        
+        // 1. Download PDF Receipt
         await generateReceipt(result, loanData, type, { period: item.period, totalPeriods });
         
-        // 🚀 AUTO-OPEN FACEBOOK/MESSENGER FOR RECEIPT DELIVERY
-        if (loanData.client.fbProfileUrl) {
-          window.open(loanData.client.fbProfileUrl, '_blank', 'noopener,noreferrer');
+        // 2. Generate Text Receipt & Inject into Clipboard
+        const textReceipt = generateTextReceipt(result, loanData, type, { period: item.period, totalPeriods });
+        copyToClipboard(textReceipt);
+        
+        // 3. Auto-Open Messenger Link
+        let commUrl = loanData.client.messengerId || loanData.client.fbProfileUrl;
+        
+        if (commUrl) {
+          if (!commUrl.startsWith('http')) {
+            commUrl = `https://m.me/${commUrl}`;
+          }
+          window.open(commUrl, '_blank', 'noopener,noreferrer');
         }
 
         onPaymentSuccess();
