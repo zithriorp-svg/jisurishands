@@ -40,7 +40,6 @@ export async function GET() {
 
     expenses.forEach(exp => { totalExpenseAmount += Number(exp.amount); });
 
-    // 🚀 STRICT RECALCULATION ALGORITHM
     loans.forEach(loan => {
       const loanDisbursed = Number(loan.principal);
       totalDisbursed += loanDisbursed;
@@ -51,11 +50,9 @@ export async function GET() {
       totalCollected += loanCollectedPrincipal;
       totalInterestCollected += loanCollectedInterest;
       
-      // Strict Outstanding
       outstandingPrincipal += Math.max(0, loanDisbursed - loanCollectedPrincipal);
     });
 
-    // Vault Cash = Deposits + Principal Collected + Interest Collected - Withdrawals - Disbursements - Expenses
     currentVaultCash = totalDeposits + totalCollected + totalInterestCollected - totalWithdrawals - totalDisbursed - totalExpenseAmount;
 
     let activeLoans = 0;
@@ -98,11 +95,9 @@ export async function GET() {
     const netInterestMargin = totalInterestCollected - totalExpenseAmount;
     const costToIncomeRatio = totalInterestCollected > 0 ? (totalExpenseAmount / totalInterestCollected) * 100 : totalExpenseAmount > 0 ? 100 : 0;
 
-    // LIQUIDITY TOPOGRAPHY
     let runningBalance = totalDeposits; 
     const liquidityMap = new Map<string, { balance: number, in: number, out: number }>();
     
-    // Fill last 30 days to ensure continuous chart
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
@@ -127,7 +122,6 @@ export async function GET() {
       return { date, balance: data.balance, inflows: data.in, outflows: data.out };
     });
 
-    // CASH FLOW PIPELINE
     const cashFlowData = [
       { name: "Capital In", value: Number(totalDeposits.toFixed(2)), type: "inflow" },
       { name: "Withdrawals", value: Number(totalWithdrawals.toFixed(2)), type: "outflow" },
@@ -137,7 +131,6 @@ export async function GET() {
       { name: "Expenses", value: Number(totalExpenseAmount.toFixed(2)), type: "outflow" }
     ];
 
-    // VELOCITY (6 MONTHS)
     const velocityMap = new Map();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(); d.setMonth(d.getMonth() - i);
@@ -161,7 +154,39 @@ export async function GET() {
       month, lent: Number(data.lent.toFixed(2)), collected: Number(data.collected.toFixed(2)), interest: Number(data.interest.toFixed(2))
     }));
 
-    // HEALTH DATA
+    // 🚀 90-DAY MATRIX ENGINE (FULLY RESTORED & CONNECTED)
+    const cashFlowVelocityMap = new Map<string, { capitalIn: number, capitalOut: number }>();
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    for (let i = 12; i >= 0; i--) {
+      const weekLabel = `W${13 - i}`;
+      cashFlowVelocityMap.set(weekLabel, { capitalIn: 0, capitalOut: 0 });
+    }
+
+    ledgers.forEach(l => {
+      const lDate = new Date(l.createdAt);
+      if (lDate >= ninetyDaysAgo) {
+        const daysDiff = Math.floor((today.getTime() - lDate.getTime()) / (1000 * 60 * 60 * 24));
+        const weekIndex = 13 - Math.floor(daysDiff / 7);
+        const weekLabel = `W${Math.max(1, Math.min(13, weekIndex))}`;
+
+        if (!cashFlowVelocityMap.has(weekLabel)) {
+           cashFlowVelocityMap.set(weekLabel, { capitalIn: 0, capitalOut: 0 });
+        }
+
+        const entry = cashFlowVelocityMap.get(weekLabel)!;
+        if (l.debitAccount === "Vault Cash") entry.capitalIn += Number(l.amount);
+        if (l.creditAccount === "Vault Cash") entry.capitalOut += Number(l.amount);
+      }
+    });
+
+    const cashFlowVelocityData = Array.from(cashFlowVelocityMap.entries()).map(([week, data]) => ({
+      week,
+      capitalIn: Number(data.capitalIn.toFixed(2)),
+      capitalOut: Number(data.capitalOut.toFixed(2))
+    }));
+
     const healthCounts = { paid: 0, pending: 0, late: 0 };
     const healthAmounts = { paid: 0, pending: 0, late: 0 };
 
@@ -179,7 +204,7 @@ export async function GET() {
     ].filter(d => d.value > 0);
 
     return NextResponse.json({
-      portfolio, liquidityData, cashFlowData, portfolioHealthData, velocityData,
+      portfolio, liquidityData, cashFlowData, portfolioHealthData, velocityData, cashFlowVelocityData,
       summary: { currentVaultCash, outstandingPrincipal, totalDeposits, totalWithdrawals, totalDisbursed, totalCollected, totalInterestCollected, totalExpenseAmount, activeLoans, totalClients, avgLoanSize },
       enterpriseKPIs: { capitalUtilizationRatio, costToIncomeRatio, portfolioAtRisk, activeDisbursedPrincipal, loansAtRiskCount },
       rciMetrics: { netInterestMargin, atRiskCapital: portfolioAtRisk, penaltyRevenue, lateInstallmentsCount }
@@ -189,4 +214,3 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
