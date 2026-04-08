@@ -67,14 +67,20 @@ export async function processSplitPaymentAction(installmentId: number, paymentTy
     await prisma.$transaction([
       prisma.ledger.create({
         data: {
-          debitAccount: "Vault Cash", creditAccount: paymentType === "INTEREST" ? "Interest Income" : "Loans Receivable",
-          amount, transactionType: paymentType === "INTEREST" ? "Interest Payment" : "Principal Payment", loanId: loan.id, paymentId: payment.id
+          debitAccount: "Vault Cash", 
+          creditAccount: paymentType === "INTEREST" ? "Interest Income" : "Loans Receivable",
+          amount, 
+          transactionType: paymentType === "INTEREST" ? "Interest Payment" : "Principal Payment", 
+          loanId: loan.id, 
+          paymentId: payment.id,
+          portfolio: loan.portfolio // 🚀 CRITICAL FIX: Ledger now knows which portfolio gets the money!
         }
       }),
       prisma.auditLog.create({
         data: {
           type: "REPAYMENT", amount, referenceId: payment.id, referenceType: "PAYMENT",
-          description: `${paymentType} payment received from ${loan.client.firstName} ${loan.client.lastName} - TXN-${loan.id.toString().padStart(4, '0')} Period ${installment.period} (₱${amount.toLocaleString()})`, portfolio: loan.portfolio
+          description: `${paymentType} payment received from ${loan.client.firstName} ${loan.client.lastName} - TXN-${loan.id.toString().padStart(4, '0')} Period ${installment.period} (₱${amount.toLocaleString()})`, 
+          portfolio: loan.portfolio
         }
       })
     ]);
@@ -95,6 +101,7 @@ export async function processSplitPaymentAction(installmentId: number, paymentTy
     const totalPaidToDate = updatedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
     revalidatePath("/"); revalidatePath("/payments"); revalidatePath("/accounting"); revalidatePath(`/clients/${loan.clientId}`); revalidatePath("/agent-portal");
+    revalidatePath("/treasury"); // Force Treasury to refresh
 
     return {
       success: true,
@@ -135,8 +142,24 @@ export async function processPaymentAction(loanId: number, amount: number, princ
     }
 
     await prisma.$transaction([
-      prisma.ledger.create({ data: { debitAccount: "Vault Cash", creditAccount: "Loans Receivable", amount, transactionType: "Loan Repayment", loanId, paymentId: payment.id } }),
-      prisma.auditLog.create({ data: { type: "REPAYMENT", amount, referenceId: payment.id, referenceType: "PAYMENT", description: `FULL payment received from ${loan.client.firstName} ${loan.client.lastName} - TXN-${loan.id.toString().padStart(4, '0')} (₱${amount.toLocaleString()})`, portfolio: loan.portfolio } })
+      prisma.ledger.create({ 
+        data: { 
+          debitAccount: "Vault Cash", 
+          creditAccount: "Loans Receivable", 
+          amount, 
+          transactionType: "Loan Repayment", 
+          loanId, 
+          paymentId: payment.id,
+          portfolio: loan.portfolio // 🚀 CRITICAL FIX
+        } 
+      }),
+      prisma.auditLog.create({ 
+        data: { 
+          type: "REPAYMENT", amount, referenceId: payment.id, referenceType: "PAYMENT", 
+          description: `FULL payment received from ${loan.client.firstName} ${loan.client.lastName} - TXN-${loan.id.toString().padStart(4, '0')} (₱${amount.toLocaleString()})`, 
+          portfolio: loan.portfolio 
+        } 
+      })
     ]);
 
     await prisma.message.create({
@@ -147,6 +170,7 @@ export async function processPaymentAction(loanId: number, amount: number, princ
     const totalPaidToDate = allPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
     revalidatePath("/"); revalidatePath("/payments"); revalidatePath("/accounting"); revalidatePath(`/clients/${loan.clientId}`); revalidatePath("/agent-portal");
+    revalidatePath("/treasury");
 
     return {
       success: true,
@@ -163,7 +187,6 @@ export async function getLoanDetailsAction(loanId: number) {
     const loan = await prisma.loan.findUnique({
       where: { id: loanId },
       include: {
-        // 🚀 FETCH THE APPLICATION TO GET THE FACEBOOK URL
         client: { include: { application: true } }, 
         payments: { where: { status: "Paid" }, orderBy: { paymentDate: "asc" } },
         installments: { orderBy: { period: 'asc' } }
@@ -206,12 +229,12 @@ export async function getLoanDetailsAction(loanId: number) {
     return {
       loan: {
         id: loan.id, 
-        // 🚀 INJECT FB PROFILE URL INTO CLIENT DATA
         client: {
           firstName: loan.client.firstName,
           lastName: loan.client.lastName,
           phone: loan.client.phone,
-          fbProfileUrl: loan.client.application?.fbProfileUrl || null
+          fbProfileUrl: loan.client.application?.fbProfileUrl || null,
+          messengerId: loan.client.application?.messengerId || null
         }, 
         principal, interestRate, termDuration,
         totalInterest: safeTotalInterest, totalRepayment: safeTotalRepayment, monthlyPayment,
@@ -252,4 +275,3 @@ export async function getDelinquencyAlerts() {
 
   } catch (error: any) { return { dueSoon: [], overdue: [] }; }
 }
-
