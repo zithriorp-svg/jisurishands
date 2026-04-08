@@ -13,7 +13,8 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { message, customPrompt } = body;
+    // 🚀 NEW: Extracting the 'model' choice from the frontend!
+    const { message, customPrompt, model } = body;
     if (!message) {
       return NextResponse.json({ error: "Empty query received." }, { status: 400 });
     }
@@ -85,12 +86,12 @@ export async function POST(req: Request) {
     `;
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // 🚀 RESTORED: Natively compatible 2.5 Flash model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // 🚀 DYNAMIC SWITCH: Uses your selected model, defaults to 2.5-flash if blank
+    const geminiModel = genAI.getGenerativeModel({ model: model || "gemini-2.5-flash" });
 
     const finalPrompt = `${customPrompt || "You are the Vault AI Core. Answer concisely."}\n\n${systemContext}`;
 
-    const result = await model.generateContent(finalPrompt);
+    const result = await geminiModel.generateContent(finalPrompt);
     const replyText = result.response.text();
 
     return NextResponse.json({ reply: replyText });
