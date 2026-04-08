@@ -145,7 +145,9 @@ function CentralizedChat({ clientId, messages }: { clientId: number, messages: M
   const [isSending, setIsSending] = useState(false); 
   const [isDrafting, setIsDrafting] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [aiModel, setAiModel] = useState("gemini-2.5-flash");
+  
+  // 🚀 OMNI-SWITCHER DEFAULT
+  const [aiModel, setAiModel] = useState("gemini-1.5-flash-latest");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -200,7 +202,6 @@ function CentralizedChat({ clientId, messages }: { clientId: number, messages: M
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-2"><span className="text-4xl">📭</span><p className="text-sm">No messages yet.</p></div>
         ) : (
           messages.map((msg) => {
-            // 🚀 FAILSAFE: Ensures sender is never null, preventing page crashes
             const sender = msg.sender || "CLIENT";
             const isAdmin = sender === "ADMIN"; 
             const isClient = sender === "CLIENT"; 
@@ -242,14 +243,31 @@ function CentralizedChat({ clientId, messages }: { clientId: number, messages: M
           <button type="submit" disabled={isSending || isDrafting || !chatInput.trim()} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2 rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{isSending ? '...' : 'SEND'}</button>
         </form>
         <div className="flex justify-between items-center px-1">
+          
+          {/* 🚀 THE OMNI-SWITCHER */}
           <select 
             value={aiModel} 
             onChange={(e) => setAiModel(e.target.value)}
             className="bg-zinc-900 border border-zinc-700 text-zinc-400 text-[10px] rounded p-1 outline-none focus:border-emerald-500"
           >
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fallback)</option>
-            <option value="gemini-pro">Gemini Pro (Stable)</option>
+            <optgroup label="Latest Stable Models">
+              <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Latest)</option>
+              <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (Latest)</option>
+              <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B</option>
+            </optgroup>
+            <optgroup label="Standard Models">
+              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+              <option value="gemini-1.0-pro">Gemini 1.0 Pro</option>
+            </optgroup>
+            <optgroup label="Experimental">
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+              <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Exp)</option>
+            </optgroup>
+            <optgroup label="Legacy">
+              <option value="gemini-pro">Gemini Pro</option>
+            </optgroup>
           </select>
 
           <button type="button" onClick={handleAIDraft} disabled={isDrafting} className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 uppercase tracking-widest disabled:opacity-50">
@@ -505,3 +523,4 @@ export default function ClientProfileClient({ client }: { client: ClientData }) 
     </div>
   );
 }
+
