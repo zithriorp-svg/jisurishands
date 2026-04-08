@@ -9,6 +9,9 @@ export default function MatrixCopilot() {
   const [showSettings, setShowSettings] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
+  // 🚀 NEW: State for the AI Model
+  const [aiModel, setAiModel] = useState("gemini-2.5-flash");
+  
   const defaultPrompt = `You are the Vault AI Core—the hyper-proactive, assertive intelligence operating a premier Micro-Lending Institution in the Philippines.
 
 USER RECOGNITION & TUTOR MODE:
@@ -49,6 +52,9 @@ RESPONSE STYLE:
   useEffect(() => {
     const savedBrain = localStorage.getItem("vault_ai_brain");
     if (savedBrain) setCustomBrain(savedBrain);
+    
+    const savedModel = localStorage.getItem("vault_ai_model");
+    if (savedModel) setAiModel(savedModel);
   }, []);
 
   useEffect(() => {
@@ -58,6 +64,11 @@ RESPONSE STYLE:
   const saveBrain = (text: string) => {
     setCustomBrain(text);
     localStorage.setItem("vault_ai_brain", text);
+  };
+  
+  const saveModel = (model: string) => {
+    setAiModel(model);
+    localStorage.setItem("vault_ai_model", model);
   };
 
   const handleCopy = (text: string, idx: number) => {
@@ -80,7 +91,8 @@ RESPONSE STYLE:
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, customPrompt: customBrain })
+        // 🚀 PASSED: Send the chosen model to the backend
+        body: JSON.stringify({ message: userMessage, customPrompt: customBrain, model: aiModel })
       });
 
       const data = await res.json();
@@ -97,7 +109,6 @@ RESPONSE STYLE:
     }
   };
 
-  // 🚀 UPGRADE: Custom Color-Coded Markdown Interceptor
   const renderMessageContent = (content: string) => {
     if (content.includes('```mermaid')) {
        return (
@@ -114,23 +125,16 @@ RESPONSE STYLE:
           components={{
             h3: ({node, ...props}) => {
               const text = String(props.children).toUpperCase();
-              let colorClass = "text-white"; 
-              let icon = "📋";
-              
+              let colorClass = "text-white"; let icon = "📋";
               if (text.includes("EXECUTIVE") || text.includes("CEO") || text.includes("CFO")) { colorClass = "text-amber-400"; icon = "💰"; }
               else if (text.includes("CREDIT") || text.includes("RISK")) { colorClass = "text-rose-400"; icon = "⚠️"; }
               else if (text.includes("IT") || text.includes("ENGINEERING") || text.includes("CTO")) { colorClass = "text-blue-400"; icon = "⚙️"; }
               else if (text.includes("FIELD") || text.includes("AGENT")) { colorClass = "text-purple-400"; icon = "🏍️"; }
               else if (text.includes("GLOBAL") || text.includes("STATUS")) { colorClass = "text-cyan-400"; icon = "🌍"; }
               else if (text.includes("ACTION") || text.includes("INITIATIVE")) { colorClass = "text-emerald-400"; icon = "🚀"; }
-
-              return (
-                <h3 className={`font-black uppercase tracking-widest mt-6 mb-3 border-b border-zinc-700/50 pb-2 flex items-center gap-2 ${colorClass}`}>
-                  <span>{icon}</span> {props.children}
-                </h3>
-              );
+              return <h3 className={`font-black uppercase tracking-widest mt-6 mb-3 border-b border-zinc-700/50 pb-2 flex items-center gap-2 ${colorClass}`}><span>{icon}</span> {props.children}</h3>;
             },
-            strong: ({node, ...props}) => <strong className="text-emerald-300 font-bold" {...props} /> // Makes bold numbers pop!
+            strong: ({node, ...props}) => <strong className="text-emerald-300 font-bold" {...props} />
           }}
         >
           {content}
@@ -153,13 +157,7 @@ RESPONSE STYLE:
         </button>
         <div className="flex items-center gap-3">
           {isOpen && (
-            <button 
-              onClick={() => setShowSettings(!showSettings)}
-              className={`text-xl hover:scale-110 transition-transform ${showSettings ? 'text-emerald-400' : 'text-zinc-500 grayscale'}`}
-              title="AI Brain Settings"
-            >
-              ⚙️
-            </button>
+            <button onClick={() => setShowSettings(!showSettings)} className={`text-xl hover:scale-110 transition-transform ${showSettings ? 'text-emerald-400' : 'text-zinc-500 grayscale'}`} title="AI Brain Settings">⚙️</button>
           )}
           {hasError ? (
              <span className="text-[10px] font-black bg-rose-500/20 text-rose-400 px-2 py-1 rounded uppercase tracking-widest border border-rose-500/30">ERROR</span>
@@ -175,47 +173,49 @@ RESPONSE STYLE:
         <div className="flex flex-col h-[450px]">
           
           {showSettings && (
-            <div className="p-4 bg-black border-b border-emerald-900/50 flex flex-col gap-2 shadow-inner">
+            <div className="p-4 bg-black border-b border-emerald-900/50 flex flex-col gap-3 shadow-inner overflow-y-auto">
               <div className="flex justify-between items-center">
-                <label className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                  AI Brain Configurations (System Prompt)
-                </label>
+                <label className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">AI Engine Override</label>
                 <button onClick={() => setShowSettings(false)} className="text-[10px] text-zinc-500 hover:text-white uppercase font-bold">Close X</button>
               </div>
+              
+              {/* 🚀 NEW: Dropdown Model Switcher */}
+              <select 
+                value={aiModel} 
+                onChange={(e) => saveModel(e.target.value)}
+                className="bg-zinc-900 border border-emerald-900/50 text-emerald-400 text-xs font-bold rounded-lg p-2 outline-none focus:border-emerald-500"
+              >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Default)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Heavy)</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast/Stable)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                <option value="gemini-pro">Gemini Pro (Legacy Fallback)</option>
+              </select>
+
+              <label className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mt-2">AI Brain Configurations (System Prompt)</label>
               <textarea 
                 value={customBrain}
                 onChange={(e) => saveBrain(e.target.value)}
                 className="w-full h-32 bg-zinc-900 text-emerald-100 font-mono text-[10px] p-3 rounded-xl border border-emerald-900/50 focus:border-emerald-500 outline-none resize-none"
                 placeholder="Enter AI Rules and Persona here..."
               />
-              <p className="text-[9px] text-zinc-500 italic">Changes are saved automatically to your device. The AI will immediately obey these new rules.</p>
             </div>
           )}
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-black/50">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                
                 <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'justify-end w-full' : 'justify-start w-full'}`}>
                   <span className={`text-[9px] font-black uppercase tracking-widest ${msg.role === 'user' ? 'text-emerald-500' : 'text-blue-400'}`}>
                     {msg.role === 'user' ? 'COMMANDER' : 'VAULT AI CORE'}
                   </span>
                   {msg.role === 'ai' && (
-                    <button 
-                      onClick={() => handleCopy(msg.content, idx)}
-                      className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 text-[9px] font-black px-2 py-0.5 rounded border border-blue-500/30 transition-colors uppercase tracking-widest cursor-pointer"
-                      title="Copy full message"
-                    >
+                    <button onClick={() => handleCopy(msg.content, idx)} className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 text-[9px] font-black px-2 py-0.5 rounded border border-blue-500/30 transition-colors uppercase tracking-widest cursor-pointer">
                       {copiedIndex === idx ? "✓ COPIED" : "📋 COPY"}
                     </button>
                   )}
                 </div>
-
-                <div className={`max-w-[90%] p-3 rounded-2xl text-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-emerald-900/40 border border-emerald-500/30 text-emerald-100 rounded-tr-none' 
-                    : 'bg-blue-900/20 border border-blue-500/30 text-blue-100 rounded-tl-none'
-                }`}>
+                <div className={`max-w-[90%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-emerald-900/40 border border-emerald-500/30 text-emerald-100 rounded-tr-none' : 'bg-blue-900/20 border border-blue-500/30 text-blue-100 rounded-tl-none'}`}>
                   {renderMessageContent(msg.content)}
                 </div>
               </div>
@@ -224,10 +224,8 @@ RESPONSE STYLE:
               <div className="flex flex-col items-start">
                 <span className="text-[9px] font-black uppercase tracking-widest mb-1 text-blue-400">VAULT AI CORE</span>
                 <div className="bg-blue-900/20 border border-blue-500/30 text-blue-400 p-3 rounded-2xl rounded-tl-none text-xs flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></span>
-                  <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                  <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
-                  <span className="ml-2 italic">Analyzing Vault telemetry and generating strategic models...</span>
+                  <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></span><span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span><span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+                  <span className="ml-2 italic">Analyzing Vault telemetry...</span>
                 </div>
               </div>
             )}
@@ -235,21 +233,8 @@ RESPONSE STYLE:
           </div>
 
           <form onSubmit={handleSubmit} className="p-3 bg-zinc-900 border-t border-zinc-800 flex gap-2 z-10">
-            <input 
-              type="text" 
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask a question or request a flowchart..." 
-              disabled={isLoading}
-              className="flex-1 bg-black border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 font-medium placeholder:text-zinc-600 transition-colors"
-            />
-            <button 
-              type="submit" 
-              disabled={isLoading || !input.trim()} 
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-            >
-              PROJECT
-            </button>
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask a question or request a flowchart..." disabled={isLoading} className="flex-1 bg-black border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 font-medium placeholder:text-zinc-600 transition-colors" />
+            <button type="submit" disabled={isLoading || !input.trim()} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">PROJECT</button>
           </form>
         </div>
       )}
