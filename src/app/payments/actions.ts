@@ -6,38 +6,17 @@ import { revalidatePath } from "next/cache";
 interface SplitPaymentResult {
   success: boolean;
   payment?: {
-    id: number;
-    amount: number;
-    principalPortion: number;
-    interestPortion: number;
-    remainingBalance: number;
-    paymentDate: Date;
-    paymentType: string;
-    installmentId: number;
-    periodNumber: number;
+    id: number; amount: number; principalPortion: number; interestPortion: number;
+    remainingBalance: number; paymentDate: Date; paymentType: string;
+    installmentId: number; periodNumber: number;
   };
-  installment?: {
-    id: number;
-    period: number;
-    principalPaid: number;
-    interestPaid: number;
-    status: string;
-  };
-  loan?: {
-    id: number;
-    clientId: number;
-    clientName: string;
-    principal: number;
-    totalRepayment: number;
-  };
+  installment?: { id: number; period: number; principalPaid: number; interestPaid: number; status: string; };
+  loan?: { id: number; clientId: number; clientName: string; principal: number; totalRepayment: number; };
   totalPaidToDate?: number;
   error?: string;
 }
 
-export async function processSplitPaymentAction(
-  installmentId: number,
-  paymentType: "INTEREST" | "PRINCIPAL"
-): Promise<SplitPaymentResult> {
+export async function processSplitPaymentAction(installmentId: number, paymentType: "INTEREST" | "PRINCIPAL"): Promise<SplitPaymentResult> {
   try {
     const installment = await prisma.loanInstallment.findUnique({
       where: { id: installmentId },
@@ -53,7 +32,6 @@ export async function processSplitPaymentAction(
 
     if (amount <= 0) return { success: false, error: `${paymentType} already paid for this installment` };
 
-    // 🚀 STRICT RECALCULATION: Bypass corrupted database records
     const computedTotalRepayment = loan.installments.reduce((sum, inst) => sum + Number(inst.expectedAmount), 0);
     const safeTotalRepayment = computedTotalRepayment > 0 ? computedTotalRepayment : Number(loan.totalRepayment);
 
@@ -129,16 +107,13 @@ export async function processSplitPaymentAction(
   } catch (error: any) { return { success: false, error: error.message }; }
 }
 
-export async function processPaymentAction(
-  loanId: number, amount: number, principalPortion: number, interestPortion: number
-): Promise<SplitPaymentResult> {
+export async function processPaymentAction(loanId: number, amount: number, principalPortion: number, interestPortion: number): Promise<SplitPaymentResult> {
   if (!loanId || !amount || amount <= 0) return { success: false, error: "Invalid payment data" };
 
   try {
     const loan = await prisma.loan.findUnique({ where: { id: loanId }, include: { client: true, installments: true } });
     if (!loan) return { success: false, error: "Loan not found" };
 
-    // 🚀 STRICT RECALCULATION
     const computedTotalRepayment = loan.installments.reduce((sum, inst) => sum + Number(inst.expectedAmount), 0);
     const safeTotalRepayment = computedTotalRepayment > 0 ? computedTotalRepayment : Number(loan.totalRepayment);
     const currentRemaining = Math.max(0, safeTotalRepayment - amount);
@@ -188,7 +163,8 @@ export async function getLoanDetailsAction(loanId: number) {
     const loan = await prisma.loan.findUnique({
       where: { id: loanId },
       include: {
-        client: true,
+        // 🚀 FETCH THE APPLICATION TO GET THE FACEBOOK URL
+        client: { include: { application: true } }, 
         payments: { where: { status: "Paid" }, orderBy: { paymentDate: "asc" } },
         installments: { orderBy: { period: 'asc' } }
       }
@@ -200,7 +176,6 @@ export async function getLoanDetailsAction(loanId: number) {
     const interestRate = Number(loan.interestRate);
     const termDuration = loan.termDuration;
     
-    // 🚀 STRICT RECALCULATION
     const computedTotalRepayment = loan.installments.reduce((sum, inst) => sum + Number(inst.expectedAmount), 0);
     const safeTotalRepayment = computedTotalRepayment > 0 ? computedTotalRepayment : Number(loan.totalRepayment);
     const safeTotalInterest = safeTotalRepayment - principal;
@@ -230,7 +205,15 @@ export async function getLoanDetailsAction(loanId: number) {
 
     return {
       loan: {
-        id: loan.id, client: loan.client, principal, interestRate, termDuration,
+        id: loan.id, 
+        // 🚀 INJECT FB PROFILE URL INTO CLIENT DATA
+        client: {
+          firstName: loan.client.firstName,
+          lastName: loan.client.lastName,
+          phone: loan.client.phone,
+          fbProfileUrl: loan.client.application?.fbProfileUrl || null
+        }, 
+        principal, interestRate, termDuration,
         totalInterest: safeTotalInterest, totalRepayment: safeTotalRepayment, monthlyPayment,
         remainingBalance: safeRemainingBalance, totalPaid, startDate: loan.startDate, endDate: loan.endDate, termType: loan.termType
       },
@@ -269,3 +252,4 @@ export async function getDelinquencyAlerts() {
 
   } catch (error: any) { return { dueSoon: [], overdue: [] }; }
 }
+
