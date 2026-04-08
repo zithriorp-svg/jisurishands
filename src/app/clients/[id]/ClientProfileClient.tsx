@@ -129,14 +129,33 @@ const DocumentImage = ({ src, label }: { src: string | null; label: string }) =>
   );
 };
 
+// 🚀 UPGRADED CHAT COMPONENT WITH DIRECT COPY-INJECTION
 function CentralizedChat({ clientId, messages }: { clientId: number, messages: Message[] }) {
   const [chatInput, setChatInput] = useState(""); 
   const [isSending, setIsSending] = useState(false); 
   const [isDrafting, setIsDrafting] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   
+  // 📋 Direct Clipboard Injector
+  const handleCopy = (id: number, text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text);
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "absolute";
+      textArea.style.left = "-999999px";
+      document.body.prepend(textArea);
+      textArea.select();
+      try { document.execCommand('copy'); } catch (error) {} finally { textArea.remove(); }
+    }
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault(); if (!chatInput.trim() || isSending) return; setIsSending(true);
     const res = await sendChatMessage(clientId, chatInput);
@@ -170,11 +189,34 @@ function CentralizedChat({ clientId, messages }: { clientId: number, messages: M
           <div className="h-full flex flex-col items-center justify-center text-zinc-500 space-y-2"><span className="text-4xl">📭</span><p className="text-sm">No messages yet.</p></div>
         ) : (
           messages.map((msg) => {
-            const isAdmin = msg.sender === "ADMIN"; const isClient = msg.sender === "CLIENT"; const isAgent = msg.sender.startsWith("AGENT");
+            const isAdmin = msg.sender === "ADMIN"; const isClient = msg.sender === "CLIENT"; 
+            const isAgent = msg.sender.startsWith("AGENT"); const isSystem = msg.sender === "VAULT SYSTEM";
+            
             return (
-              <div key={msg.id} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}>
-                <span className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isAdmin ? 'text-blue-400' : isAgent ? 'text-amber-400' : 'text-emerald-400'}`}>{msg.sender} • {formatDateTime(msg.createdAt.toString())}</span>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${isAdmin ? 'bg-blue-600 text-white rounded-tr-none' : isAgent ? 'bg-amber-600 text-white rounded-tr-none' : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-700'}`}>{msg.text}</div>
+              <div key={msg.id} className={`flex flex-col ${isClient ? 'items-start' : 'items-end'} group`}>
+                <span className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isAdmin ? 'text-blue-400' : isAgent ? 'text-amber-400' : isSystem ? 'text-purple-400' : 'text-emerald-400'}`}>
+                  {msg.sender} • {formatDateTime(msg.createdAt.toString())}
+                </span>
+                
+                <div className="flex items-end gap-2 max-w-[85%]">
+                  {/* Copy button on LEFT for Outgoing messages */}
+                  {!isClient && (
+                    <button onClick={() => handleCopy(msg.id, msg.text)} className={`p-2 rounded-full transition-all flex-shrink-0 ${copiedId === msg.id ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100 md:opacity-100'}`} title="Copy to Clipboard">
+                      {copiedId === msg.id ? '✓' : '📋'}
+                    </button>
+                  )}
+                  
+                  <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap shadow-md ${isAdmin ? 'bg-blue-600 text-white rounded-tr-none' : isAgent ? 'bg-amber-600 text-white rounded-tr-none' : isSystem ? 'bg-purple-900/40 border border-purple-500/30 text-purple-100 rounded-tr-none' : 'bg-zinc-800 text-zinc-200 rounded-tl-none border border-zinc-700'}`}>
+                    {msg.text}
+                  </div>
+                  
+                  {/* Copy button on RIGHT for Incoming messages */}
+                  {isClient && (
+                    <button onClick={() => handleCopy(msg.id, msg.text)} className={`p-2 rounded-full transition-all flex-shrink-0 ${copiedId === msg.id ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100 md:opacity-100'}`} title="Copy to Clipboard">
+                      {copiedId === msg.id ? '✓' : '📋'}
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })
@@ -206,7 +248,6 @@ export default function ClientProfileClient({ client }: { client: ClientData }) 
 
   const handleDisburseComplete = () => { router.refresh(); setActiveTab('loans'); };
 
-  // 💥 ERADICATION PROTOCOL (The trigger button logic)
   const handleDeleteClient = async () => {
     const confirm1 = confirm(`WARNING: You are about to permanently eradicate the profile of ${client.firstName} ${client.lastName}.\n\nThis will wipe ALL their loans, payments, chat history, and KYC data. Proceed?`);
     if (!confirm1) return;
@@ -244,7 +285,6 @@ export default function ClientProfileClient({ client }: { client: ClientData }) 
             📄 Original Application
           </Link>
 
-          {/* 💥 ERADICATION BUTTON IS RIGHT HERE! */}
           <button 
             onClick={handleDeleteClient} 
             disabled={isDeleting}
