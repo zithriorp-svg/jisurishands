@@ -1,5 +1,5 @@
 {
-  "name": "Vault Command",
+  "name": "FinTech Vault Native",
   "short_name": "Vault",
   "start_url": "/",
   "display": "standalone",
@@ -7,9 +7,10 @@
   "theme_color": "#10b981",
   "icons": [
     {
-      "src": "/icon",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzEwYjk4MSIgcng9IjEwMCIvPjx0ZXh0IHg9IjI1NiIgeT0iMjU2IiBkb21pbmFudC1iYXNlbGluZT0iY2VudHJhbCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyNTAiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2ZmZmZmZiI+VjwvdGV4dD48L3N2Zz4=",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
