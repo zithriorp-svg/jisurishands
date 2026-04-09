@@ -75,6 +75,11 @@ RESPONSE STYLE:
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // 🚀 PWA ENGINE IGNITION
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => console.log("PWA Engine Status: Standby"));
+    }
+
     const savedBrain = localStorage.getItem("vault_ai_brain");
     if (savedBrain) setCustomBrain(savedBrain);
     
