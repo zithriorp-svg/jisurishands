@@ -105,15 +105,28 @@ export async function POST(req: Request) {
       const result = await geminiModel.generateContent(finalPrompt);
       replyText = result.response.text();
 
-    } else if (safeProvider === "openai" || safeProvider === "deepseek" || safeProvider === "grok") {
-      // 🔵 OPENAI COMPATIBLE ENGINES (ChatGPT, DeepSeek, xAI)
-      if (!clientKey) throw new Error(`Missing API Key for ${safeProvider.toUpperCase()}. Please paste it in the settings.`);
+    } else if (["openai", "deepseek", "grok", "pecoclaw", "zai"].includes(safeProvider)) {
+      // 🔵 STANDARD API ENGINES (ChatGPT, DeepSeek, xAI, Pecoclaw, Z.AI)
+      if (!clientKey) throw new Error(`Missing API Key for ${safeProvider.toUpperCase()}. Please paste it in the Omni-Hub settings.`);
       
       let endpoint = "https://api.openai.com/v1/chat/completions";
-      if (safeProvider === "deepseek") endpoint = "https://api.deepseek.com/chat/completions";
-      if (safeProvider === "grok") endpoint = "https://api.x.ai/v1/chat/completions";
+      let defaultModel = "gpt-4o-mini";
 
-      const defaultModel = safeProvider === "openai" ? "gpt-4o-mini" : safeProvider === "deepseek" ? "deepseek-chat" : "grok-1";
+      if (safeProvider === "deepseek") {
+        endpoint = "https://api.deepseek.com/chat/completions";
+        defaultModel = "deepseek-chat";
+      } else if (safeProvider === "grok") {
+        endpoint = "https://api.x.ai/v1/chat/completions";
+        defaultModel = "grok-1";
+      } else if (safeProvider === "pecoclaw") {
+        // ⚠️ COMMANDER: If Pecoclaw uses a specific URL, you will eventually update this!
+        endpoint = "https://api.pecoclaw.com/v1/chat/completions"; 
+        defaultModel = "peco-v1";
+      } else if (safeProvider === "zai") {
+        // ⚠️ COMMANDER: If Z.AI uses a specific URL, you will eventually update this!
+        endpoint = "https://api.z.ai/v1/chat/completions"; 
+        defaultModel = "zai-standard";
+      }
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -155,8 +168,7 @@ export async function POST(req: Request) {
       replyText = data.content[0].text;
 
     } else {
-      // 🔴 UNKNOWN ENGINES (Z.AI, Pecoclaw, etc.)
-      throw new Error(`The native endpoint for ${safeProvider.toUpperCase()} is not yet hardwired into the router. Use Gemini, ChatGPT, Claude, Grok, or DeepSeek for now.`);
+      throw new Error(`The native endpoint for ${safeProvider.toUpperCase()} is not valid.`);
     }
 
     return NextResponse.json({ reply: replyText });
@@ -166,3 +178,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "Unknown Core Failure" }, { status: 500 });
   }
 }
+
