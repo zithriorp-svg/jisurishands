@@ -1,5 +1,5 @@
 {
-  "name": "FinTech Vault Command",
+  "name": "Vault Command",
   "short_name": "Vault",
   "description": "Secure Micro-Lending Control Hub",
   "start_url": "/",
@@ -8,16 +8,10 @@
   "theme_color": "#10b981",
   "icons": [
     {
-      "src": "/icon.png",
-      "sizes": "192x192",
+      "src": "https://placehold.co/512x512/10b981/ffffff.png?text=VAULT",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/icon.png",
-      "sizes": "512x512",
-      "type": "image/png"
     }
   ]
 }
-
