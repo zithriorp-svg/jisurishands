@@ -4,8 +4,13 @@ import AppHeader from "@/components/AppHeader";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Vault Web", 
-  description: "Secure Command Center"
+  title: "FinTech App", 
+  description: "Secure Command Center",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    title: "Vault",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {
@@ -19,9 +24,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-      </head>
       <body className="bg-slate-950 text-slate-100 antialiased font-sans min-h-screen flex flex-col">
         <AppHeader />
         <main className="flex-1">
