@@ -8,13 +8,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const { message, customPrompt, model, provider, clientKey, ngrokUrl } = body;
     
-    // 🚀 THE OMNI-ROUTER CAPTURES THE COMMANDER'S SELECTIONS
-    const { message, customPrompt, model, provider, clientKey } = body;
-    
-    if (!message) {
-      return NextResponse.json({ error: "Empty query received." }, { status: 400 });
-    }
+    if (!message) return NextResponse.json({ error: "Empty query received." }, { status: 400 });
 
     const safeProvider = provider || "gemini";
 
@@ -88,14 +84,35 @@ export async function POST(req: Request) {
     `;
 
     const finalPrompt = `${customPrompt || "You are the Vault AI Core. Answer concisely."}\n\n${systemContext}`;
-
     let replyText = "";
 
     // ==========================================
     // 2. THE MULTI-LINGUAL ROUTER
     // ==========================================
 
-    if (safeProvider === "gemini") {
+    if (safeProvider === "local_picoclaw") {
+      // 🟣 LOCAL NGROK WORMHOLE (BEAMS TO YOUR PHONE)
+      if (!ngrokUrl) throw new Error("Wormhole Offline: Missing Ngrok URL! Please paste your Termux link in the settings.");
+      
+      // Strip any trailing slash from the URL just in case
+      const cleanUrl = ngrokUrl.replace(/\/$/, "");
+      const endpoint = `${cleanUrl}/v1/chat/completions`;
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer local_wormhole" },
+        body: JSON.stringify({
+          model: model || "picoclaw-local",
+          messages: [{ role: "user", content: finalPrompt }],
+          temperature: 0.7
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || `Ngrok Error: ${response.statusText}`);
+      replyText = data.choices[0].message.content;
+
+    } else if (safeProvider === "gemini") {
       // 🟢 GOOGLE GEMINI ENGINE
       const activeKey = clientKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!activeKey) throw new Error("Missing Gemini API Key.");
@@ -105,40 +122,21 @@ export async function POST(req: Request) {
       const result = await geminiModel.generateContent(finalPrompt);
       replyText = result.response.text();
 
-    } else if (["openai", "deepseek", "grok", "pecoclaw", "zai"].includes(safeProvider)) {
-      // 🔵 STANDARD API ENGINES (ChatGPT, DeepSeek, xAI, Pecoclaw, Z.AI)
-      if (!clientKey) throw new Error(`Missing API Key for ${safeProvider.toUpperCase()}. Please paste it in the Omni-Hub settings.`);
+    } else if (["openai", "deepseek", "grok", "pecoclaw"].includes(safeProvider)) {
+      // 🔵 STANDARD API ENGINES
+      if (!clientKey) throw new Error(`Missing API Key for ${safeProvider.toUpperCase()}. Please paste it in the settings.`);
       
-      let endpoint = "https://api.openai.com/v1/chat/completions";
+      let endpoint = "[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)";
       let defaultModel = "gpt-4o-mini";
 
-      if (safeProvider === "deepseek") {
-        endpoint = "https://api.deepseek.com/chat/completions";
-        defaultModel = "deepseek-chat";
-      } else if (safeProvider === "grok") {
-        endpoint = "https://api.x.ai/v1/chat/completions";
-        defaultModel = "grok-1";
-      } else if (safeProvider === "pecoclaw") {
-        // ⚠️ COMMANDER: If Pecoclaw uses a specific URL, you will eventually update this!
-        endpoint = "https://api.pecoclaw.com/v1/chat/completions"; 
-        defaultModel = "peco-v1";
-      } else if (safeProvider === "zai") {
-        // ⚠️ COMMANDER: If Z.AI uses a specific URL, you will eventually update this!
-        endpoint = "https://api.z.ai/v1/chat/completions"; 
-        defaultModel = "zai-standard";
-      }
+      if (safeProvider === "deepseek") { endpoint = "[https://api.deepseek.com/chat/completions](https://api.deepseek.com/chat/completions)"; defaultModel = "deepseek-chat"; }
+      else if (safeProvider === "grok") { endpoint = "[https://api.x.ai/v1/chat/completions](https://api.x.ai/v1/chat/completions)"; defaultModel = "grok-1"; }
+      else if (safeProvider === "pecoclaw") { endpoint = "[https://api.pecoclaw.com/v1/chat/completions](https://api.pecoclaw.com/v1/chat/completions)"; defaultModel = "peco-v1"; }
 
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${clientKey}`
-        },
-        body: JSON.stringify({
-          model: model || defaultModel,
-          messages: [{ role: "user", content: finalPrompt }],
-          temperature: 0.7
-        })
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${clientKey}` },
+        body: JSON.stringify({ model: model || defaultModel, messages: [{ role: "user", content: finalPrompt }], temperature: 0.7 })
       });
 
       const data = await response.json();
@@ -147,28 +145,17 @@ export async function POST(req: Request) {
 
     } else if (safeProvider === "claude") {
       // 🟠 ANTHROPIC CLAUDE ENGINE
-      if (!clientKey) throw new Error("Missing API Key for Claude. Please paste it in the settings.");
+      if (!clientKey) throw new Error("Missing API Key for Claude.");
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("[https://api.anthropic.com/v1/messages](https://api.anthropic.com/v1/messages)", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": clientKey,
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({
-          model: model || "claude-3-haiku-20240307",
-          max_tokens: 1500,
-          messages: [{ role: "user", content: finalPrompt }]
-        })
+        headers: { "Content-Type": "application/json", "x-api-key": clientKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: model || "claude-3-haiku-20240307", max_tokens: 1500, messages: [{ role: "user", content: finalPrompt }] })
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message || `API Error: ${response.statusText}`);
       replyText = data.content[0].text;
-
-    } else {
-      throw new Error(`The native endpoint for ${safeProvider.toUpperCase()} is not valid.`);
     }
 
     return NextResponse.json({ reply: replyText });
@@ -178,4 +165,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "Unknown Core Failure" }, { status: 500 });
   }
 }
-
