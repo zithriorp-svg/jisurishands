@@ -5,13 +5,13 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 
 const AI_PROVIDERS = [
-  { id: "gemini", name: "Google Gemini" },
-  { id: "openai", name: "OpenAI (ChatGPT)" },
-  { id: "deepseek", name: "DeepSeek" },
-  { id: "grok", name: "xAI (Grok)" },
-  { id: "claude", name: "Anthropic (Claude)" },
-  { id: "zai", name: "Z.AI" },
-  { id: "pecoclaw", name: "Pecoclaw" }
+  { id: "gemini", name: "Google Gemini (Cloud)" },
+  { id: "openai", name: "OpenAI ChatGPT (Cloud)" },
+  { id: "deepseek", name: "DeepSeek (Cloud)" },
+  { id: "grok", name: "xAI Grok (Cloud)" },
+  { id: "claude", name: "Anthropic Claude (Cloud)" },
+  { id: "pecoclaw", name: "Pecoclaw (Cloud)" },
+  { id: "local_picoclaw", name: "PicoClaw (Local Phone via Ngrok)" }
 ];
 
 const DEFAULT_MODEL_LISTS: Record<string, string> = {
@@ -20,8 +20,8 @@ const DEFAULT_MODEL_LISTS: Record<string, string> = {
   deepseek: "deepseek-chat, deepseek-coder",
   grok: "grok-1, grok-1.5",
   claude: "claude-3-haiku-20240307, claude-3-sonnet-20240229",
-  zai: "zai-standard, zai-fast",
-  pecoclaw: "peco-v1, peco-fast"
+  pecoclaw: "peco-v1, peco-fast",
+  local_picoclaw: "picoclaw-local"
 };
 
 export default function MatrixCopilot() {
@@ -29,12 +29,12 @@ export default function MatrixCopilot() {
   const [showSettings, setShowSettings] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
-  // 🚀 OMNI-AI STATE MANAGEMENT
   const [activeProvider, setActiveProvider] = useState("gemini");
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [ngrokUrl, setNgrokUrl] = useState("");
   const [modelLists, setModelLists] = useState<Record<string, string>>(DEFAULT_MODEL_LISTS);
   const [selectedModels, setSelectedModels] = useState<Record<string, string>>({
-    gemini: "gemini-1.5-flash", openai: "gpt-4o-mini", deepseek: "deepseek-chat", grok: "grok-1", claude: "claude-3-haiku-20240307", zai: "zai-standard", pecoclaw: "peco-v1"
+    gemini: "gemini-1.5-flash", openai: "gpt-4o-mini", deepseek: "deepseek-chat", grok: "grok-1", claude: "claude-3-haiku-20240307", pecoclaw: "peco-v1", local_picoclaw: "picoclaw-local"
   });
 
   const defaultPrompt = `You are the Vault AI Core—the hyper-proactive, assertive intelligence operating a premier Micro-Lending Institution in the Philippines.
@@ -67,14 +67,13 @@ RESPONSE STYLE:
   const [customBrain, setCustomBrain] = useState(defaultPrompt);
 
   const [messages, setMessages] = useState<{role: 'user' | 'ai', content: string}[]>([
-    { role: 'ai', content: "Matrix Online. Omni-AI Hub synchronized. Ask me to map out a strategic forecast, query live stats, or generate a lending flowchart." }
+    { role: 'ai', content: "Matrix Online. Dual-Core Hub synchronized. Connect to the Cloud or your Local Phone Wormhole. Waiting for orders." }
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 🚀 LOAD SAVED DATA FROM DEVICE
   useEffect(() => {
     const savedBrain = localStorage.getItem("vault_ai_brain");
     if (savedBrain) setCustomBrain(savedBrain);
@@ -84,6 +83,9 @@ RESPONSE STYLE:
 
     const savedKeys = localStorage.getItem("vault_ai_keys");
     if (savedKeys) setApiKeys(JSON.parse(savedKeys));
+
+    const savedNgrok = localStorage.getItem("vault_ngrok_url");
+    if (savedNgrok) setNgrokUrl(savedNgrok);
 
     const savedLists = localStorage.getItem("vault_ai_lists");
     if (savedLists) setModelLists(JSON.parse(savedLists));
@@ -96,26 +98,19 @@ RESPONSE STYLE:
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen, showSettings]);
 
-  // 🚀 SAVE FUNCTIONS
-  const saveBrain = (text: string) => {
-    setCustomBrain(text); localStorage.setItem("vault_ai_brain", text);
-  };
-  const saveProvider = (providerId: string) => {
-    setActiveProvider(providerId); localStorage.setItem("vault_ai_provider", providerId);
-  };
+  const saveBrain = (text: string) => { setCustomBrain(text); localStorage.setItem("vault_ai_brain", text); };
+  const saveProvider = (providerId: string) => { setActiveProvider(providerId); localStorage.setItem("vault_ai_provider", providerId); };
   const saveKey = (providerId: string, key: string) => {
     const newKeys = { ...apiKeys, [providerId]: key };
     setApiKeys(newKeys); localStorage.setItem("vault_ai_keys", JSON.stringify(newKeys));
   };
+  const saveNgrok = (url: string) => { setNgrokUrl(url); localStorage.setItem("vault_ngrok_url", url); };
+  
   const saveModelList = (providerId: string, list: string) => {
     const newLists = { ...modelLists, [providerId]: list };
     setModelLists(newLists); localStorage.setItem("vault_ai_lists", JSON.stringify(newLists));
-    
-    // Auto-select the first model in the new list if it exists
     const firstModel = list.split(',')[0]?.trim();
-    if (firstModel) {
-       saveSelection(providerId, firstModel);
-    }
+    if (firstModel) saveSelection(providerId, firstModel);
   };
   const saveSelection = (providerId: string, model: string) => {
     const newSelections = { ...selectedModels, [providerId]: model };
@@ -142,25 +137,20 @@ RESPONSE STYLE:
       const activeKey = apiKeys[activeProvider] || "";
       const activeModel = selectedModels[activeProvider] || "";
 
-      if (activeProvider !== 'gemini') {
-        throw new Error(`The backend is currently locked to Gemini. To use ${activeProvider.toUpperCase()}, the backend API must be upgraded.`);
-      }
-
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // We pass the key and model to the backend (backend will need an upgrade later to use the key)
         body: JSON.stringify({ 
           message: userMessage, 
           customPrompt: customBrain, 
           model: activeModel,
           provider: activeProvider,
-          clientKey: activeKey 
+          clientKey: activeKey,
+          ngrokUrl: ngrokUrl
         })
       });
 
       const data = await res.json();
-      
       if (!res.ok) throw new Error(data.error || "Matrix Disconnected");
 
       setMessages(prev => [...prev, { role: 'ai', content: data.reply }]);
@@ -207,7 +197,6 @@ RESPONSE STYLE:
     );
   };
 
-  // Convert comma-separated string to array for dropdown
   const currentModelArray = (modelLists[activeProvider] || "").split(',').map(s => s.trim()).filter(Boolean);
 
   return (
@@ -243,17 +232,16 @@ RESPONSE STYLE:
           {showSettings && (
             <div className="p-4 bg-black border-b border-emerald-900/50 flex flex-col gap-4 shadow-inner overflow-y-auto max-h-[300px]">
               <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
-                <label className="text-[12px] font-black text-emerald-400 uppercase tracking-widest">🌐 OMNI-AI CONTROL HUB</label>
+                <label className="text-[12px] font-black text-emerald-400 uppercase tracking-widest">🌐 DUAL-CORE CONTROL HUB</label>
                 <button onClick={() => setShowSettings(false)} className="text-[10px] bg-zinc-800 px-2 py-1 rounded text-zinc-400 hover:text-white uppercase font-bold transition-colors">Close X</button>
               </div>
               
-              {/* 1. SELECT AI COMPANY */}
               <div>
                 <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">1. Select AI Company</label>
                 <select 
                   value={activeProvider} 
                   onChange={(e) => saveProvider(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 text-white text-sm font-bold rounded-lg p-2 outline-none focus:border-emerald-500"
+                  className={`w-full text-white text-sm font-bold rounded-lg p-2 outline-none ${activeProvider === 'local_picoclaw' ? 'bg-blue-900/40 border border-blue-500/50 focus:border-blue-400' : 'bg-zinc-900 border border-zinc-700 focus:border-emerald-500'}`}
                 >
                   {AI_PROVIDERS.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -261,32 +249,42 @@ RESPONSE STYLE:
                 </select>
               </div>
 
-              {/* 2. PASTE API KEY */}
-              <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">2. Paste {activeProvider.toUpperCase()} API Key</label>
-                <input 
-                  type="password"
-                  value={apiKeys[activeProvider] || ""}
-                  onChange={(e) => saveKey(activeProvider, e.target.value)}
-                  placeholder={`Paste your ${activeProvider} key here (skips .env file)`}
-                  className="w-full bg-black border border-zinc-700 text-emerald-400 font-mono text-xs rounded-lg p-2 outline-none focus:border-emerald-500"
-                />
-                <p className="text-[9px] text-zinc-600 mt-1 italic">* Keys are securely encrypted and stored locally in your browser.</p>
-              </div>
+              {activeProvider === "local_picoclaw" ? (
+                <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-800/50 shadow-inner">
+                  <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">2. Paste Ngrok Wormhole URL</label>
+                  <input 
+                    type="url"
+                    value={ngrokUrl}
+                    onChange={(e) => saveNgrok(e.target.value)}
+                    placeholder="[https://your-link.ngrok-free.app](https://your-link.ngrok-free.app)"
+                    className="w-full bg-black border border-blue-900 text-blue-300 font-mono text-xs rounded-lg p-2 outline-none focus:border-blue-500"
+                  />
+                  <p className="text-[9px] text-blue-500/70 mt-1 italic">* Paste the exact https:// link generated by Termux on your phone.</p>
+                </div>
+              ) : (
+                <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
+                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">2. Paste {activeProvider.toUpperCase()} API Key</label>
+                  <input 
+                    type="password"
+                    value={apiKeys[activeProvider] || ""}
+                    onChange={(e) => saveKey(activeProvider, e.target.value)}
+                    placeholder={`Paste your ${activeProvider} key here (skips .env file)`}
+                    className="w-full bg-black border border-zinc-700 text-emerald-400 font-mono text-xs rounded-lg p-2 outline-none focus:border-emerald-500"
+                  />
+                  <p className="text-[9px] text-zinc-600 mt-1 italic">* Keys are securely encrypted and stored locally in your browser.</p>
+                </div>
+              )}
 
-              {/* 3. CUSTOM MODEL LIST */}
               <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
                 <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">3. Custom Model Version List</label>
                 <textarea 
                   value={modelLists[activeProvider] || ""}
                   onChange={(e) => saveModelList(activeProvider, e.target.value)}
                   placeholder="e.g. gemini-1.5-flash, gemini-2.0-pro"
-                  className="w-full h-16 bg-black border border-zinc-700 text-amber-400 font-mono text-xs rounded-lg p-2 outline-none focus:border-amber-500 resize-none"
+                  className="w-full h-12 bg-black border border-zinc-700 text-amber-400 font-mono text-xs rounded-lg p-2 outline-none focus:border-amber-500 resize-none"
                 />
-                <p className="text-[9px] text-zinc-600 mt-1 italic">* Separate model names with a comma. This creates your dropdown below.</p>
               </div>
 
-              {/* 4. ACTIVE MODEL SELECTION */}
               <div>
                 <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">4. Select Active Model</label>
                 <select 
@@ -319,26 +317,29 @@ RESPONSE STYLE:
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'justify-end w-full' : 'justify-start w-full'}`}>
-                  <span className={`text-[9px] font-black uppercase tracking-widest ${msg.role === 'user' ? 'text-emerald-500' : 'text-blue-400'}`}>
-                    {msg.role === 'user' ? 'COMMANDER' : `${activeProvider.toUpperCase()} CORE`}
+                  <span className={`text-[9px] font-black uppercase tracking-widest ${msg.role === 'user' ? 'text-emerald-500' : activeProvider === 'local_picoclaw' ? 'text-blue-400' : 'text-emerald-300'}`}>
+                    {msg.role === 'user' ? 'COMMANDER' : activeProvider === 'local_picoclaw' ? 'PHONE MATRIX CORE' : `${activeProvider.toUpperCase()} CORE`}
                   </span>
                   {msg.role === 'ai' && (
-                    <button onClick={() => handleCopy(msg.content, idx)} className="bg-blue-900/40 hover:bg-blue-800 text-blue-300 text-[9px] font-black px-2 py-0.5 rounded border border-blue-500/30 transition-colors uppercase tracking-widest cursor-pointer">
+                    <button onClick={() => handleCopy(msg.content, idx)} className="bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-[9px] font-black px-2 py-0.5 rounded border border-zinc-600/50 transition-colors uppercase tracking-widest cursor-pointer">
                       {copiedIndex === idx ? "✓ COPIED" : "📋 COPY"}
                     </button>
                   )}
                 </div>
-                <div className={`max-w-[90%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-emerald-900/40 border border-emerald-500/30 text-emerald-100 rounded-tr-none' : 'bg-blue-900/20 border border-blue-500/30 text-blue-100 rounded-tl-none'}`}>
+                <div className={`max-w-[90%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-emerald-900/40 border border-emerald-500/30 text-emerald-100 rounded-tr-none' : activeProvider === 'local_picoclaw' ? 'bg-blue-900/30 border border-blue-500/30 text-blue-100 rounded-tl-none' : 'bg-zinc-800/80 border border-zinc-700 text-zinc-200 rounded-tl-none'}`}>
                   {renderMessageContent(msg.content)}
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex flex-col items-start">
-                <span className="text-[9px] font-black uppercase tracking-widest mb-1 text-blue-400">{activeProvider.toUpperCase()} CORE</span>
-                <div className="bg-blue-900/20 border border-blue-500/30 text-blue-400 p-3 rounded-2xl rounded-tl-none text-xs flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></span><span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span><span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
-                  <span className="ml-2 italic">Analyzing Vault telemetry...</span>
+                <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${activeProvider === 'local_picoclaw' ? 'text-blue-400' : 'text-zinc-400'}`}>
+                  {activeProvider === 'local_picoclaw' ? 'BEAMING TO PHONE...' : 'SYNCING WITH CLOUD...'}
+                </span>
+                <div className={`p-3 rounded-2xl rounded-tl-none text-xs flex items-center gap-2 ${activeProvider === 'local_picoclaw' ? 'bg-blue-900/20 border border-blue-500/30 text-blue-400' : 'bg-zinc-800/80 border border-zinc-700 text-zinc-400'}`}>
+                  <span className={`w-2 h-2 rounded-full animate-bounce ${activeProvider === 'local_picoclaw' ? 'bg-blue-400' : 'bg-zinc-400'}`}></span>
+                  <span className={`w-2 h-2 rounded-full animate-bounce ${activeProvider === 'local_picoclaw' ? 'bg-blue-400' : 'bg-zinc-400'}`} style={{ animationDelay: '0.2s' }}></span>
+                  <span className={`w-2 h-2 rounded-full animate-bounce ${activeProvider === 'local_picoclaw' ? 'bg-blue-400' : 'bg-zinc-400'}`} style={{ animationDelay: '0.4s' }}></span>
                 </div>
               </div>
             )}
@@ -346,7 +347,7 @@ RESPONSE STYLE:
           </div>
 
           <form onSubmit={handleSubmit} className="p-3 bg-zinc-900 border-t border-zinc-800 flex gap-2 z-10">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Send commands to ${activeProvider.toUpperCase()}...`} disabled={isLoading} className="flex-1 bg-black border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 font-medium placeholder:text-zinc-600 transition-colors" />
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder={activeProvider === 'local_picoclaw' ? "Send command to your Samsung S22..." : `Send commands to ${activeProvider.toUpperCase()}...`} disabled={isLoading} className="flex-1 bg-black border border-zinc-700 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 font-medium placeholder:text-zinc-600 transition-colors" />
             <button type="submit" disabled={isLoading || !input.trim()} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-3 rounded-xl text-xs uppercase tracking-widest transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg">PROJECT</button>
           </form>
         </div>
