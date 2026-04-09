@@ -2,11 +2,16 @@ export const dynamic = "force-dynamic";
 
 import "./globals.css";
 import AppHeader from "@/components/AppHeader";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
   title: "FinTech Vault",
   description: "Secure Command Center",
+  manifest: "/manifest.json",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#10b981",
 };
 
 export default function RootLayout({
